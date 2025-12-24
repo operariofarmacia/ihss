@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logística - Supervisor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = { theme: { extend: { colors: { brand: { dark: '#003366', teal: '#0e7490', cyan: '#06b6d4' } } } } }
+    </script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #f8fafc; }
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .menu-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid transparent; }
+        .menu-card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); border-color: #e2e8f0; }
+        .nav-link:hover { background-color: rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="flex flex-col h-screen justify-center items-center bg-slate-50 text-slate-700">
+
+    <!-- Loader de Seguridad -->
+    <div id="loader" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-brand-dark mb-4"></div>
+        <p class="text-sm font-bold text-slate-500 animate-pulse">Verificando permisos y roles...</p>
+    </div>
+
+    <div id="dashboard-container" class="hidden w-full max-w-5xl p-8 fade-in h-full flex flex-col">
+        <header class="mb-6 text-center shrink-0">
+            <div class="inline-block p-3 rounded-full bg-white shadow-md mb-2">
+                <img src="https://portal.ihss.hn/cronicos/assets/dist/img/Recurso%201.png" class="h-14 object-contain">
+            </div>
+            <h1 class="text-2xl font-bold text-brand-dark">Logística</h1>
+            <p class="text-slate-500 text-sm">Supervisor de Logística • <span id="user-name" class="font-bold text-brand-cyan">Usuario</span></p>
+            <div id="role-badges" class="mt-2 flex justify-center gap-2 flex-wrap"></div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto custom-scroll bg-white rounded-2xl border border-slate-100 shadow-md p-6">
+            <div class="flex items-start gap-4">
+                <div class="h-12 w-12 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100">
+                    <i class="fa-solid fa-screwdriver-wrench text-brand-teal text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-slate-800">Módulo en construcción</h2>
+                    <p class="text-sm text-slate-500 mt-1">Esta sección ya está conectada (login, permisos, dispositivo, horario y logout). Aquí después metemos el flujo real del trabajo.</p>
+                    <ul class="mt-4 text-sm text-slate-600 list-disc pl-5 space-y-1">
+                        <li>Permisos por rol y puesto (jobTitle)</li>
+                        <li>Sesión única por dispositivo (activeSessionId)</li>
+                        <li>Bloqueo por dispositivo no autorizado (authorizedDevices)</li>
+                        <li>Restricción por horario y días (shiftStart/shiftEnd/allowedDays)</li>
+                        <li>Cierre por inactividad 30 minutos</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="mt-6 flex flex-col sm:flex-row gap-3">
+                <button onclick="window.safeNavigate('logistica.html')" class="bg-brand-dark text-white px-5 py-2 rounded-xl text-sm font-semibold shadow hover:shadow-md transition">
+                    <i class="fa-solid fa-arrow-left mr-2"></i> Volver al Menú
+                </button>
+                <button onclick="logout()" class="bg-white border border-red-200 text-red-600 px-5 py-2 rounded-xl text-sm font-semibold hover:bg-red-50 transition">
+                    <i class="fa-solid fa-power-off mr-2"></i> Cerrar Sesión
+                </button>
+            </div>
+        </main>
+
+        <div class="pt-6 text-center text-xs text-slate-400">
+            IHSS a tu Casa • Logística
+        </div>
+    </div>
+
+    <div id="no-access-msg" class="hidden fixed inset-0 flex flex-col items-center justify-center bg-slate-50 z-40 text-center p-8">
+        <i class="fa-solid fa-lock text-6xl text-slate-300 mb-4"></i>
+        <h2 class="text-xl font-bold text-brand-dark">Acceso denegado</h2>
+        <p id="deny-reason" class="text-slate-500 mt-2 max-w-md">No tiene permisos para este módulo.</p>
+        <button onclick="logout()" class="mt-6 bg-brand-dark text-white px-6 py-2 rounded-lg text-sm">Salir</button>
+    </div>
+
+    <script type="module">
+        import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId } from "./js/core/firebase.js";
+        import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+let deviceId = getDeviceId();
+
+
+
+        // --- ID DE DISPOSITIVO (persistente) ---
+        if (!deviceId) {
+            deviceId = crypto.randomUUID();
+            localStorage.setItem('mediflow_device_id', deviceId);
+        }
+
+        // --- NAVEGACIÓN SEGURA ---
+        window.safeNavigate = (targetUrl) => {
+            try { window.location.href = targetUrl; }
+            catch (e) { console.warn("Redirección bloqueada:", e); }
+        };
+
+        // --- RESTRICCIÓN HORARIO / DÍAS (si fueron configurados por Admin) ---
+        function isWithinSchedule(profile) {
+            const allowedDays = Array.isArray(profile.allowedDays) ? profile.allowedDays : [];
+            const shiftStart = (profile.shiftStart || "").trim();
+            const shiftEnd = (profile.shiftEnd || "").trim();
+
+            // Si no hay nada configurado, no restringimos
+            if (allowedDays.length === 0 && !shiftStart && !shiftEnd) return true;
+
+            const dayNames = ["Domingo","Lunes","Martes","Miercoles","Jueves","Viernes","Sabado"];
+            const todayName = dayNames[new Date().getDay()];
+
+            if (allowedDays.length > 0 && !allowedDays.includes(todayName)) return false;
+
+            if (!shiftStart || !shiftEnd) return true;
+
+            const toMin = (hhmm) => {
+                const [h,m] = hhmm.split(":").map(n=>parseInt(n,10));
+                if (Number.isNaN(h) || Number.isNaN(m)) return null;
+                return h*60+m;
+            };
+
+            const startMin = toMin(shiftStart);
+            const endMin = toMin(shiftEnd);
+            if (startMin === null || endMin === null) return true;
+
+            const now = new Date();
+            const nowMin = now.getHours()*60 + now.getMinutes();
+
+            // Turno normal (ej: 08:00-17:00)
+            if (startMin <= endMin) return nowMin >= startMin && nowMin <= endMin;
+
+            // Turno nocturno (ej: 20:00-06:00)
+            return nowMin >= startMin || nowMin <= endMin;
+        }
+
+        // --- INACTIVIDAD 30 MIN ---
+        const INACTIVITY_MS = 30 * 60 * 1000;
+        let inactivityTimer = null;
+
+        function resetInactivityTimer() {
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+            inactivityTimer = setTimeout(() => {
+                secureLogout("Sesión cerrada por inactividad (30 minutos).");
+            }, INACTIVITY_MS);
+        }
+
+        function bindInactivityListeners() {
+            ["mousemove","keydown","click","scroll","touchstart"].forEach(evt => {
+                window.addEventListener(evt, resetInactivityTimer, { passive: true });
+            });
+            resetInactivityTimer();
+        }
+
+        async function setOfflineSafe() {
+            try {
+                if (auth.currentUser) {
+                    await updateDoc(doc(db,'artifacts', appId, 'users', auth.currentUser.uid, 'profile', 'data'), { status: 'offline' });
+                }
+            } catch (e) {
+                // No bloqueamos logout por esto
+                console.warn("No se pudo marcar offline:", e);
+            }
+        }
+
+        async function secureLogout(message) {
+            try {
+                if (message) alert(message);
+                await setOfflineSafe();
+            } finally {
+                signOut(auth).then(()=>window.safeNavigate('index.html'));
+            }
+        }
+
+        window.logout = async () => {
+            if (confirm("¿Cerrar sesión?")) {
+                await secureLogout("");
+            }
+        };
+
+        window.addEventListener("beforeunload", () => { setOfflineSafe(); });
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) setOfflineSafe();
+        });
+
+        const REQUIRED_JOBS = ["Supervisor Logística"];
+
+        function renderBadges(jobs = []) {
+            const box = document.getElementById('role-badges');
+            box.innerHTML = '';
+            jobs.forEach(j => {
+                const pill = document.createElement('span');
+                pill.className = "text-xs font-bold px-3 py-1 rounded-full bg-white border border-slate-200 shadow-sm text-slate-600";
+                pill.textContent = j;
+                box.appendChild(pill);
+            });
+        }
+
+        function deny(reason) {
+            document.getElementById('deny-reason').textContent = reason;
+            document.getElementById('no-access-msg').classList.remove('hidden');
+            document.getElementById('loader').classList.add('hidden');
+        }
+
+        onAuthStateChanged(auth, (u) => {
+            if (!u) { window.safeNavigate('index.html'); return; }
+            bindInactivityListeners();
+
+            onSnapshot(doc(db, 'artifacts', appId, 'users', u.uid, 'profile', 'data'), (snap) => {
+                if (!snap.exists()) { secureLogout("Error: Perfil no encontrado."); return; }
+                const d = snap.data();
+
+                if (d.requireIpApproval && d.activeSessionId && d.activeSessionId !== deviceId) {
+                    secureLogout("Sesión iniciada en otro dispositivo."); return;
+                }
+
+                if (d.requireIpApproval && d.role !== 'admin') {
+                    const authDev = Array.isArray(d.authorizedDevices) ? d.authorizedDevices : [];
+                    if (!authDev.includes(deviceId)) {
+                        secureLogout("Dispositivo no autorizado. Inicie sesión y valide el dispositivo con su llave."); return;
+                    }
+                }
+
+                if (d.role !== 'logistica') {
+                    deny("No tiene permisos para este departamento.");
+                    return;
+                }
+
+                if (!isWithinSchedule(d)) {
+                    deny("Acceso fuera del horario o días permitidos.");
+                    return;
+                }
+
+                const jobs = Array.isArray(d.jobTitle) ? d.jobTitle : (d.jobTitle ? [d.jobTitle] : []);
+                renderBadges(jobs);
+
+                const ok = REQUIRED_JOBS.length === 0 || REQUIRED_JOBS.some(j => jobs.includes(j));
+                if (!ok) {
+                    deny("No tiene asignado el puesto requerido para este módulo.");
+                    return;
+                }
+
+                document.getElementById('user-name').textContent = d.name || d.username || "Usuario";
+                document.getElementById('loader').classList.add('hidden');
+                document.getElementById('dashboard-container').classList.remove('hidden');
+            });
+        });
+    </script>
+</body>
+</html>

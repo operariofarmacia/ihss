@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==== CONFIG (BOOTSTRAP) ====
+    function appId() { return "fdihss-mediflow-v2-modular"; }
+    function signedIn() { return request.auth != null; }
+
+    function profileDoc(uid) {
+      return get(/databases/$(database)/documents/artifacts/$(appId())/users/$(uid)/profile/data);
+    }
+
+    // Solo para crear el admin inicial desde el cliente.
+    // Después de bootstrapping, cambia a firestore.rules.production.
+    function isBootstrapAdmin() {
+      return signedIn() && request.auth.token.email == "admin@mediflow.sys";
+    }
+
+    function isAdmin() {
+      let p = profileDoc(request.auth.uid);
+      return signedIn() && (isBootstrapAdmin() || (p.exists() && p.data.role == "admin"));
+    }
+
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+
+    function sessionUpdateOnly() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly([
+        "status",
+        "lastLogin",
+        "activeSessionId",
+        "authorizedDevices"
+      ]);
+    }
+
+    function authorizedDevicesAppendOnly() {
+      return !request.resource.data.diff(resource.data).changedKeys().hasAny(["authorizedDevices"]) ||
+        request.resource.data.authorizedDevices.hasAll(resource.data.authorizedDevices);
+    }
+
+    function isAssignedBeneficiary() {
+      return signedIn() && (
+        (resource.data.assignedPharma.uid == request.auth.uid) ||
+        (resource.data.assignedCC.uid == request.auth.uid)
+      );
+    }
+
+    function isAssignedShipment() {
+      return signedIn() && (
+        (resource.data.assignedPharma.uid == request.auth.uid) ||
+        (resource.data.assignedCC.uid == request.auth.uid)
+      );
+    }
+
+    // ==== USERS PROFILES ====
+    match /artifacts/{aid}/users/{uid}/profile/{docId} {
+      allow read: if (aid == appId()) && (isSelf(uid) || isAdmin());
+
+      // Bootstrapping: permitir que el admin inicial cree su propio profile.
+      allow create: if (aid == appId()) && (
+        isAdmin() ||
+        (isBootstrapAdmin() && isSelf(uid) && request.resource.data.role == "admin")
+      );
+
+      allow delete: if (aid == appId()) && isAdmin();
+
+      allow update: if (aid == appId()) && (
+        isAdmin() ||
+        (isSelf(uid) && sessionUpdateOnly() && authorizedDevicesAppendOnly())
+      );
+    }
+
+    // ==== USERS DIRECTORY ====
+    match /artifacts/{aid}/public/data/users_directory/{docId} {
+      // Bootstrapping: permitir que el admin inicial cree su registro.
+      allow create: if (aid == appId()) && (
+        isAdmin() ||
+        (isBootstrapAdmin() && request.resource.data.role == "admin")
+      );
+
+      allow read, update, delete: if (aid == appId()) && isAdmin();
+    }
+
+    // ==== BENEFICIARIES (DH) ====
+    match /artifacts/{aid}/public/data/beneficiaries/{docId} {
+      allow read: if (aid == appId()) && (isAdmin() || isAssignedBeneficiary());
+      allow create, update, delete: if (aid == appId()) && isAdmin();
+    }
+
+    // ==== SHIPMENTS ====
+    match /artifacts/{aid}/public/data/shipments/{docId} {
+      allow read: if (aid == appId()) && (isAdmin() || isAssignedShipment());
+      allow create, delete: if (aid == appId()) && isAdmin();
+      allow update: if (aid == appId()) && (
+        isAdmin() ||
+        (resource.data.assignedPharma.uid == request.auth.uid &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            "status",
+            "dispatchedAt",
+            "dispatchCheck"
+          ])
+        )
+      );
+    }
+
+    // ==== GEOGRAPHIC AREAS ====
+    match /artifacts/{aid}/public/data/geographic_areas/{docId} {
+      allow read, write: if (aid == appId()) && isAdmin();
+    }
+
+    // ==== DEFAULT DENY ====
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

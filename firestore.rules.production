@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==== CONFIG ====
+    function appId() { return "fdihss-mediflow-v2-modular"; }
+    function signedIn() { return request.auth != null; }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+
+    function profileDoc(uid) {
+      return get(/databases/$(database)/documents/artifacts/$(appId())/users/$(uid)/profile/data);
+    }
+
+    function isAdmin() {
+      return signedIn() && profileDoc(request.auth.uid).data.role == "admin";
+    }
+
+    function sessionUpdateOnly() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly([
+        "status",
+        "lastLogin",
+        "activeSessionId",
+        "authorizedDevices"
+      ]);
+    }
+
+    function authorizedDevicesAppendOnly() {
+      return !request.resource.data.diff(resource.data).changedKeys().hasAny(["authorizedDevices"]) ||
+        request.resource.data.authorizedDevices.hasAll(resource.data.authorizedDevices);
+    }
+
+    function isAssignedBeneficiary() {
+      return signedIn() && (
+        (resource.data.assignedPharma.uid == request.auth.uid) ||
+        (resource.data.assignedCC.uid == request.auth.uid)
+      );
+    }
+
+    function isAssignedShipment() {
+      return signedIn() && (
+        (resource.data.assignedPharma.uid == request.auth.uid) ||
+        (resource.data.assignedCC.uid == request.auth.uid)
+      );
+    }
+
+    // ==== USERS PROFILES ====
+    match /artifacts/{aid}/users/{uid}/profile/{docId} {
+      allow read: if (aid == appId()) && (isSelf(uid) || isAdmin());
+
+      // Crear/editar perfiles: solo admin.
+      allow create, delete: if (aid == appId()) && isAdmin();
+
+      // Usuario puede actualizar solo campos de sesión/estado en su propio perfil.
+      allow update: if (aid == appId()) && (
+        isAdmin() ||
+        (isSelf(uid) && sessionUpdateOnly() && authorizedDevicesAppendOnly())
+      );
+    }
+
+    // ==== USERS DIRECTORY (ADMIN ONLY) ====
+    match /artifacts/{aid}/public/data/users_directory/{docId} {
+      allow read, write: if (aid == appId()) && isAdmin();
+    }
+
+    // ==== BENEFICIARIES (DH) ====
+    match /artifacts/{aid}/public/data/beneficiaries/{docId} {
+      allow read: if (aid == appId()) && (isAdmin() || isAssignedBeneficiary());
+      allow create, update, delete: if (aid == appId()) && isAdmin();
+    }
+
+    // ==== SHIPMENTS ====
+    match /artifacts/{aid}/public/data/shipments/{docId} {
+      allow read: if (aid == appId()) && (isAdmin() || isAssignedShipment());
+
+      // Admin: todo.
+      allow create, delete: if (aid == appId()) && isAdmin();
+
+      // Farmacia asignada puede actualizar solo campos de despacho (farmacia4).
+      allow update: if (aid == appId()) && (
+        isAdmin() ||
+        (resource.data.assignedPharma.uid == request.auth.uid &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            "status",
+            "dispatchedAt",
+            "dispatchCheck"
+          ])
+        )
+      );
+    }
+
+    // ==== GEOGRAPHIC AREAS (ADMIN ONLY) ====
+    match /artifacts/{aid}/public/data/geographic_areas/{docId} {
+      allow read, write: if (aid == appId()) && isAdmin();
+    }
+
+    // ==== DEFAULT DENY ====
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

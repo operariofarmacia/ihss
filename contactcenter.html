@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Center - IHSS a tu Casa</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            dark: '#003366', teal: '#0e7490', cyan: '#06b6d4', clinical: '#10b981', danger: '#ef4444', light: '#f8fafc'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #f8fafc; }
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Efectos Tarjeta */
+        .menu-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid transparent; }
+        .menu-card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); border-color: #e2e8f0; }
+        /* Nav Link */
+        .nav-link:hover { background-color: rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="flex flex-col h-screen justify-center items-center bg-slate-50 text-slate-700">
+
+    <!-- PANTALLA DE CARGA / SEGURIDAD -->
+    <div id="loader" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-brand-dark mb-4"></div>
+        <p class="text-sm font-bold text-slate-500 animate-pulse">Validando credenciales de Contact Center...</p>
+    </div>
+
+    <!-- CONTENEDOR PRINCIPAL -->
+    <div id="dashboard-container" class="hidden w-full max-w-6xl p-8 fade-in h-full flex flex-col">
+        
+        <!-- HEADER -->
+        <header class="mb-12 text-center shrink-0">
+            <div class="inline-block p-4 rounded-full bg-white shadow-lg mb-4 ring-4 ring-slate-100">
+                <!-- Icono representativo de Contact Center -->
+                <i class="fa-solid fa-headset text-4xl text-brand-dark"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-brand-dark tracking-tight">Portal de Contact Center</h1>
+            <p class="text-slate-500 mt-2">Bienvenido, <span id="user-name" class="font-bold text-brand-cyan">Usuario</span></p>
+            <div id="role-badges" class="mt-3 flex justify-center gap-2 flex-wrap">
+                <!-- Badges de roles se inyectan aquí -->
+            </div>
+        </header>
+
+        <!-- GRID DE TARJETAS -->
+        <div id="cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 overflow-y-auto custom-scroll pb-4 px-2 justify-center max-w-4xl mx-auto w-full">
+            <!-- Las tarjetas se generan dinámicamente según permisos -->
+        </div>
+
+        <!-- FOOTER / LOGOUT -->
+        <div class="mt-auto pt-8 text-center border-t border-slate-200">
+            <button onclick="logout()" class="text-red-500 hover:text-red-700 font-bold text-sm flex items-center justify-center mx-auto transition-colors px-6 py-2 rounded-full hover:bg-red-50 group">
+                <i class="fa-solid fa-power-off mr-2 group-hover:scale-110 transition-transform"></i> Cerrar Sesión Segura
+            </button>
+        </div>
+    </div>
+    
+    <!-- MENSAJE SIN ACCESO -->
+    <div id="no-access-msg" class="hidden fixed inset-0 flex flex-col items-center justify-center bg-slate-50 z-40 text-center p-8">
+        <i class="fa-solid fa-lock text-6xl text-slate-300 mb-6"></i>
+        <h2 class="text-2xl font-bold text-brand-dark">Sin Módulos Asignados</h2>
+        <p class="text-slate-500 mt-3 max-w-md mx-auto">Su usuario no tiene roles operativos configurados para el Contact Center. Por favor, contacte al administrador.</p>
+        <button onclick="logout()" class="mt-8 bg-brand-dark hover:bg-blue-900 text-white px-8 py-3 rounded-xl text-sm font-bold shadow-lg transition-transform transform active:scale-95">Salir</button>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script type="module">
+        import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId } from "./js/core/firebase.js";
+        import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+let deviceId = getDeviceId();
+
+        // CONFIGURACIÓN FIREBASE (Misma que admin y farmacia)
+        
+
+        /* --- NAVEGACIÓN SEGURA --- */
+        window.safeNavigate = (targetUrl) => {
+            try {
+                window.location.href = targetUrl;
+            } catch (e) {
+                console.warn("Redirección bloqueada:", e);
+                // Fallback visual
+                document.body.innerHTML = `
+                    <div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#003366;color:white;font-family:sans-serif;">
+                        <h2 style="margin-bottom:15px;font-size:24px;">Redireccionando...</h2>
+                        <p style="opacity:0.8;margin-bottom:25px;">Si no avanza automáticamente, haga clic abajo.</p>
+                        <a href="./${targetUrl}" style="background:#06b6d4;color:white;padding:12px 30px;border-radius:8px;text-decoration:none;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.2);">CONTINUAR</a>
+                    </div>`;
+            }
+        };
+
+        /* --- VALIDACIÓN DE SESIÓN Y RENDERIZADO --- */
+        onAuthStateChanged(auth, async (u) => {
+            if(!u) window.safeNavigate('index.html');
+            else {
+                // Escuchar perfil para cambios en tiempo real
+                onSnapshot(doc(db, 'artifacts', appId, 'users', u.uid, 'profile', 'data'), (snap) => {
+                    if(snap.exists()){
+                        const d = snap.data();
+                        
+                        // 1. Sesión Única
+                        if(d.requireIpApproval && d.activeSessionId && d.activeSessionId !== deviceId) {
+                            alert("Sesión iniciada en otro dispositivo."); 
+                            signOut(auth).then(()=>window.safeNavigate('index.html')); 
+                            return;
+                        }
+                        
+                        // 2. Verificar Departamento (Contact Center)
+                        if(d.role !== 'contact_center') {
+                            alert("Acceso denegado: Su usuario no pertenece al Contact Center."); 
+                            signOut(auth).then(()=>window.safeNavigate('index.html')); 
+                            return;
+                        }
+                        
+                        renderMenu(d);
+                    } else {
+                        // Usuario no existe en DB
+                        signOut(auth).then(()=>window.safeNavigate('index.html'));
+                    }
+                });
+            }
+        });
+
+        function renderMenu(userData) {
+            const roles = userData.jobTitle || [];
+            document.getElementById('user-name').innerText = userData.name;
+            
+            // Badges de Roles
+            const badgeContainer = document.getElementById('role-badges');
+            badgeContainer.innerHTML = roles.map(r => `<span class="bg-blue-100 text-blue-800 text-[10px] px-3 py-1 rounded-full font-bold border border-blue-200 uppercase tracking-wide">${r}</span>`).join('');
+            
+            const grid = document.getElementById('cards-grid');
+            grid.innerHTML = '';
+            
+            let hasModules = false;
+
+            // --- LÓGICA DE TARJETAS POR CARGO ---
+
+            // 1. SUPERVISOR CC (contactcenter1.html)
+            if (roles.includes('Supervisor CC')) {
+                grid.innerHTML += createCard(
+                    'Supervisión y Reportes', 
+                    'Panel de control gerencial, métricas de llamadas y auditoría de agentes.', 
+                    'contactcenter1.html', 
+                    'fa-chart-column', 
+                    'text-purple-600', 'bg-purple-50', 'border-purple-100'
+                );
+                hasModules = true;
+            }
+
+            // 2. AGENTE CC (contactcenter2.html)
+            if (roles.includes('Agente Contact Center') || roles.includes('Supervisor CC')) { // Supervisor también puede operar
+                grid.innerHTML += createCard(
+                    'Gestión de Llamadas', 
+                    'Consola de operador para confirmación de envíos, reprogramaciones y atención al derechohabiente.', 
+                    'contactcenter2.html', 
+                    'fa-headset', 
+                    'text-brand-cyan', 'bg-cyan-50', 'border-cyan-100'
+                );
+                hasModules = true;
+            }
+
+            // Finalizar carga
+            document.getElementById('loader').classList.add('hidden');
+            
+            if (hasModules) {
+                document.getElementById('dashboard-container').classList.remove('hidden');
+                document.getElementById('no-access-msg').classList.add('hidden');
+            } else {
+                document.getElementById('dashboard-container').classList.add('hidden');
+                document.getElementById('no-access-msg').classList.remove('hidden');
+            }
+        }
+
+        function createCard(title, desc, url, icon, colorText, colorBg, borderColor) {
+            return `
+            <div onclick="window.safeNavigate('${url}')" class="menu-card bg-white p-8 rounded-3xl shadow-sm hover:shadow-xl border ${borderColor} cursor-pointer group flex flex-col justify-between h-64 relative overflow-hidden">
+                <!-- Decoración de fondo -->
+                <div class="absolute top-0 right-0 w-24 h-24 ${colorBg} rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-150 opacity-60 z-0"></div>
+                
+                <div class="relative z-10">
+                    <div class="w-16 h-16 ${colorBg} ${colorText} rounded-2xl flex items-center justify-center text-3xl mb-6 shadow-sm group-hover:rotate-6 transition-transform duration-300">
+                        <i class="fa-solid ${icon}"></i>
+                    </div>
+                    <h3 class="font-bold text-slate-800 text-xl group-hover:${colorText} transition-colors">${title}</h3>
+                    <p class="text-sm text-slate-400 mt-3 leading-relaxed">${desc}</p>
+                </div>
+                
+                <div class="relative z-10 mt-6 pt-4 border-t border-slate-50 flex items-center text-xs font-bold ${colorText} opacity-70 group-hover:opacity-100 transition-opacity">
+                    INGRESAR AL MÓDULO <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
+                </div>
+            </div>`;
+        }
+
+        window.logout = async () => {
+            if(confirm("¿Desea cerrar la sesión de forma segura?")) {
+                if(auth.currentUser) {
+                    // Marcar offline en DB (opcional, buena práctica)
+                    try { await updateDoc(doc(db,'artifacts',appId,'users',auth.currentUser.uid,'profile','data'), {status:'offline'}); } catch(e){}
+                }
+                signOut(auth).then(() => window.safeNavigate('index.html'));
+            }
+        };
+    </script>
+</body>
+</html>

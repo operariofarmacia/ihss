@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Farmacia - Menú Principal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = { theme: { extend: { colors: { brand: { dark: '#003366', teal: '#0e7490', cyan: '#06b6d4' } } } } }
+    </script>
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #f8fafc; }
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .menu-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid transparent; }
+        .menu-card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); border-color: #e2e8f0; }
+        .nav-link:hover { background-color: rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="flex flex-col h-screen justify-center items-center bg-slate-50 text-slate-700">
+
+    <!-- Loader de Seguridad -->
+    <div id="loader" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-brand-dark mb-4"></div>
+        <p class="text-sm font-bold text-slate-500 animate-pulse">Verificando permisos y roles...</p>
+    </div>
+
+    <div id="dashboard-container" class="hidden w-full max-w-6xl p-8 fade-in h-full flex flex-col">
+        <header class="mb-8 text-center shrink-0">
+            <div class="inline-block p-3 rounded-full bg-white shadow-md mb-2">
+                <img src="https://portal.ihss.hn/cronicos/assets/dist/img/Recurso%201.png" class="h-16 object-contain">
+            </div>
+            <h1 class="text-3xl font-bold text-brand-dark">Portal de Farmacia</h1>
+            <p class="text-slate-500 text-sm">Bienvenido, <span id="user-name" class="font-bold text-brand-cyan">Usuario</span></p>
+            <div id="role-badges" class="mt-2 flex justify-center gap-2 flex-wrap"></div>
+        </header>
+
+        <div id="cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 overflow-y-auto custom-scroll pb-4 px-2">
+            <!-- Las tarjetas se generan dinámicamente aquí -->
+        </div>
+
+        <div class="mt-auto pt-6 text-center border-t border-slate-200">
+            <button onclick="logout()" class="text-red-500 hover:text-red-700 font-bold text-sm flex items-center justify-center mx-auto transition-colors px-4 py-2 rounded-full hover:bg-red-50">
+                <i class="fa-solid fa-power-off mr-2"></i> Cerrar Sesión Segura
+            </button>
+        </div>
+    </div>
+    
+    <div id="no-access-msg" class="hidden fixed inset-0 flex flex-col items-center justify-center bg-slate-50 z-40 text-center p-8">
+        <i class="fa-solid fa-lock text-6xl text-slate-300 mb-4"></i>
+        <h2 class="text-xl font-bold text-brand-dark">Sin Módulos Asignados</h2>
+        <p class="text-slate-500 mt-2 max-w-md">Su usuario no tiene roles operativos configurados. Contacte al administrador para que le asigne sus funciones.</p>
+        <button onclick="logout()" class="mt-6 bg-brand-dark text-white px-6 py-2 rounded-lg text-sm">Salir</button>
+    </div>
+
+    <script type="module">
+        import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId } from "./js/core/firebase.js";
+        import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+let deviceId = getDeviceId();
+
+        
+
+        // --- NAVEGACIÓN SEGURA ---
+        window.safeNavigate = (targetUrl) => {
+            try {
+                window.location.href = targetUrl;
+            } catch (e) {
+                console.warn("Redirección bloqueada por el entorno:", e);
+                if (targetUrl === 'index.html') {
+                     document.body.innerHTML = `
+                        <div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#003366;color:white;text-align:center;font-family:sans-serif;">
+                            <h2 style="margin-bottom:10px;">Sesión Finalizada</h2>
+                            <p style="opacity:0.8;margin-bottom:20px;">Haga clic abajo para volver al inicio.</p>
+                            <a href="./index.html" style="background:#06b6d4;color:white;padding:12px 30px;border-radius:8px;text-decoration:none;font-weight:bold;box-shadow:0 4px 6px rgba(0,0,0,0.1);">VOLVER AL LOGIN</a>
+                        </div>`;
+                } else {
+                    window.location.assign(targetUrl); 
+                }
+            }
+        };
+
+        // --- VALIDACIÓN DE ENTRADA ---
+        onAuthStateChanged(auth, async (u) => {
+            if(!u) window.safeNavigate('index.html');
+            else {
+                onSnapshot(doc(db, 'artifacts', appId, 'users', u.uid, 'profile', 'data'), (snap) => {
+                    if(snap.exists()){
+                        const d = snap.data();
+                        
+                        if(d.requireIpApproval && d.activeSessionId && d.activeSessionId !== deviceId) {
+                            alert("Sesión iniciada en otro dispositivo."); 
+                            signOut(auth).then(()=>window.safeNavigate('index.html')); 
+                            return;
+                        }
+                        if(d.role !== 'farmacia') {
+                            alert("No tiene permisos para Farmacia."); 
+                            signOut(auth).then(()=>window.safeNavigate('index.html')); 
+                            return;
+                        }
+                        
+                        renderMenu(d);
+                    } else {
+                        signOut(auth).then(()=>window.safeNavigate('index.html'));
+                    }
+                });
+            }
+        });
+
+        function renderMenu(userData) {
+            const roles = userData.jobTitle || [];
+            document.getElementById('user-name').innerText = userData.name;
+            const badges = document.getElementById('role-badges');
+            badges.innerHTML = roles.map(r => `<span class="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded-full font-bold border border-blue-200">${r}</span>`).join('');
+            
+            const grid = document.getElementById('cards-grid');
+            grid.innerHTML = '';
+            
+            let hasModules = false;
+
+            // GENERADOR DE TARJETAS (LÓGICA ESTRICTA: 1 Cargo = 1 Tarjeta)
+            
+            // 1. REVISIÓN Y ASIGNACIÓN (farmacia3.html)
+            if (roles.includes('Revisión y Asignación')) {
+                grid.innerHTML += createCard('Revisión y Asignación', 'Planificación de envíos, calendario y gestión de cartera.', 'farmacia3.html', 'fa-calendar-check', 'text-blue-600', 'bg-blue-50', 'border-blue-200');
+                hasModules = true;
+            }
+
+            // 2. DESPACHO (farmacia4.html)
+            if (roles.includes('Despacho de Medicamentos')) {
+                grid.innerHTML += createCard('Despacho', 'Cola de impresión y entrega a operaciones.', 'farmacia4.html', 'fa-box-open', 'text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+                hasModules = true;
+            }
+
+            // 3. INVENTARIO (farmacia2.html)
+            if (roles.includes('Gestión de Inventario')) {
+                grid.innerHTML += createCard('Inventario', 'Gestión de stock y grupos.', 'farmacia2.html', 'fa-pills', 'text-purple-600', 'bg-purple-50', 'border-purple-200');
+                hasModules = true;
+            }
+
+            // 4. REPORTES (farmacia1.html)
+            if (roles.includes('Supervisor de Farmacia')) {
+                grid.innerHTML += createCard('Reportes', 'Métricas y auditoría.', 'farmacia1.html', 'fa-chart-pie', 'text-orange-600', 'bg-orange-50', 'border-orange-200');
+                hasModules = true;
+            }
+
+            document.getElementById('loader').classList.add('hidden');
+            if (hasModules) {
+                document.getElementById('dashboard-container').classList.remove('hidden');
+                document.getElementById('no-access-msg').classList.add('hidden');
+            } else {
+                document.getElementById('dashboard-container').classList.add('hidden');
+                document.getElementById('no-access-msg').classList.remove('hidden');
+            }
+        }
+
+        function createCard(title, desc, url, icon, colorText, colorBg, borderColor) {
+            return `
+            <div onclick="window.safeNavigate('${url}')" class="menu-card bg-white p-6 rounded-2xl shadow-sm cursor-pointer group flex flex-col justify-between h-56 border ${borderColor}">
+                <div class="flex justify-between items-start">
+                    <div class="w-12 h-12 ${colorBg} ${colorText} rounded-xl flex items-center justify-center text-2xl group-hover:rotate-6 transition-transform">
+                        <i class="fa-solid ${icon}"></i>
+                    </div>
+                    <i class="fa-solid fa-arrow-right -rotate-45 text-slate-300 group-hover:text-slate-800 group-hover:rotate-0 transition-all duration-300"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-slate-800 text-lg mb-1 group-hover:${colorText} transition-colors">${title}</h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">${desc}</p>
+                </div>
+            </div>`;
+        }
+
+        window.logout = async () => {
+            if(confirm("¿Cerrar sesión?")) {
+                if(auth.currentUser) await updateDoc(doc(db,'artifacts',appId,'users',auth.currentUser.uid,'profile','data'), {status:'offline'});
+                signOut(auth).then(() => window.safeNavigate('index.html'));
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administración - IHSS a tu Casa</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Librerías de Datos -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            dark: '#003366', teal: '#0e7490', cyan: '#06b6d4', clinical: '#10b981', danger: '#ef4444', light: '#f8fafc'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #f8fafc; }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+        .modal-backdrop { background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); }
+        .toggle-checkbox:checked { right: 0; border-color: #10b981; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #10b981; }
+        .job-check { accent-color: #06b6d4; width: 16px; height: 16px; cursor: pointer; }
+        select { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .hidden-view { display: none !important; }
+        .dash-card:hover { transform: translateY(-5px); box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.1); }
+        .calendar-day { min-height: 110px; transition: all 0.2s; border-radius: 12px; border: 1px solid #e2e8f0; position: relative; }
+        .calendar-day:hover { background-color: #f0f9ff; border-color: #06b6d4; }
+        .geo-card { transition: all 0.3s ease; }
+        .geo-card:hover { transform: scale(1.02); border-color: #06b6d4; }
+        
+        /* Timeline Styles */
+        .timeline-step { position: relative; z-index: 1; min-width: 50px; }
+        .timeline-step::before { content: ''; position: absolute; top: 9px; left: -50%; width: 100%; height: 2px; background: #e2e8f0; z-index: -1; }
+        .timeline-step:first-child::before { display: none; }
+        .timeline-active .step-dot { background-color: #10b981; color: white; border-color: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
+        .timeline-active::before { background: #10b981; }
+        .tab-btn.active { border-bottom: 3px solid #003366; color: #003366; font-weight: 700; background-color: #f1f5f9; }
+        .tab-btn { color: #64748b; transition: all 0.2s; }
+        
+        /* Sidebar Transition */
+        #sidebar { transition: width 0.3s ease-in-out; }
+        .sidebar-text { transition: opacity 0.2s ease-in-out; white-space: nowrap; overflow: hidden; }
+        .collapsed .sidebar-text { opacity: 0; width: 0; display: none; }
+        .collapsed .sidebar-header-text { display: none; }
+        .collapsed #sidebar-logo { width: 40px; height: 40px; margin-bottom: 10px; }
+        
+        /* Progreso de Carga */
+        .progress-bar-container { background-color: #e2e8f0; border-radius: 9999px; height: 12px; overflow: hidden; }
+        .progress-bar-fill { background: linear-gradient(90deg, #06b6d4, #10b981); height: 100%; width: 0%; transition: width 0.3s ease; }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row h-screen overflow-hidden text-slate-700 bg-slate-50">
+
+    <!-- BLOQUE 0: PANTALLA DE BLOQUEO Y RECUPERACIÓN DE SESIÓN -->
+    <div id="auth-lock" class="fixed inset-0 z-[200] bg-[#003366] flex flex-col items-center justify-center text-white hidden fade-in">
+        <div class="bg-white p-3 rounded-full mb-5 shadow-2xl ring-4 ring-white/10">
+            <img src="https://portal.ihss.hn/cronicos/assets/dist/img/Recurso%201.png" class="h-20 w-20 object-contain">
+        </div>
+        <h2 class="text-3xl font-bold mb-2 tracking-tight">Sesión Finalizada</h2>
+        <p class="text-blue-200 text-sm mb-8 max-w-xs text-center leading-relaxed" id="lock-msg">Tu sesión ha expirado.</p>
+        <button onclick="forceNavigateLogin()" class="bg-brand-cyan hover:bg-brand-teal text-white px-8 py-3 rounded-xl font-bold transition-all shadow-lg transform hover:scale-105 flex items-center mb-4">
+            <i class="fa-solid fa-arrow-left mr-3"></i> Ir al Login
+        </button>
+    </div>
+
+    <!-- BLOQUE 1: SIDEBAR (CONTRÁCTIL) -->
+    <aside id="sidebar" class="w-72 bg-brand-dark text-white flex flex-col shadow-2xl z-20 shrink-0 relative transition-all duration-300">
+        <!-- Botón Toggle -->
+        <button onclick="toggleSidebar()" class="absolute -right-3 top-8 bg-brand-cyan text-white w-6 h-6 rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition z-50 border border-white">
+            <i class="fa-solid fa-chevron-left text-[10px]" id="sidebar-toggle-icon"></i>
+        </button>
+
+        <div class="p-6 border-b border-blue-900/50 flex flex-col items-center text-center overflow-hidden">
+            <div id="sidebar-logo" class="bg-white p-1 rounded-full shadow-lg mb-3 w-16 h-16 flex items-center justify-center ring-2 ring-brand-cyan/50 cursor-pointer hover:scale-105 transition-transform" onclick="switchView('dashboard')">
+                <img src="https://portal.ihss.hn/cronicos/assets/dist/img/Recurso%201.png" class="object-contain h-full w-full p-1">
+            </div>
+            <div class="sidebar-header-text">
+                <h2 class="font-bold text-lg tracking-wide uppercase">IHSS</h2>
+                <p class="text-[10px] text-brand-cyan uppercase tracking-widest font-bold">Administrador</p>
+            </div>
+        </div>
+        
+        <nav class="flex-1 p-4 space-y-2 overflow-y-auto custom-scroll overflow-x-hidden">
+            <button onclick="switchView('dashboard')" class="w-full flex items-center p-3 rounded-xl text-slate-300 hover:bg-white/10 hover:text-white transition group" id="btn-view-dashboard">
+                <i class="fa-solid fa-house w-6 text-center text-lg"></i>
+                <span class="font-medium text-sm ml-3 sidebar-text">Inicio</span>
+            </button>
+            
+            <div class="pt-4 pb-2 px-3 text-[10px] text-slate-400 font-bold uppercase tracking-wider sidebar-text">Gestión</div>
+            
+            <button onclick="switchView('users')" class="w-full flex items-center p-3 rounded-xl text-slate-300 hover:bg-white/10 hover:text-white transition group" id="btn-view-users">
+                <i class="fa-solid fa-users-gear w-6 text-center text-lg"></i>
+                <span class="font-medium text-sm ml-3 sidebar-text">Personal</span>
+            </button>
+            <button onclick="switchView('beneficiaries')" class="w-full flex items-center p-3 rounded-xl text-slate-300 hover:bg-white/10 hover:text-white transition group" id="btn-view-beneficiaries">
+                <i class="fa-solid fa-hospital-user w-6 text-center text-lg"></i>
+                <span class="font-medium text-sm ml-3 sidebar-text">Derechohabientes</span>
+            </button>
+            <button onclick="switchView('geographic')" class="w-full flex items-center p-3 rounded-xl text-slate-300 hover:bg-white/10 hover:text-white transition group" id="btn-view-geographic">
+                <i class="fa-solid fa-map-location-dot w-6 text-center text-lg"></i>
+                <span class="font-medium text-sm ml-3 sidebar-text">Geografía</span>
+            </button>
+
+            <div class="pt-4 pb-2 px-3 text-[10px] text-slate-400 font-bold uppercase tracking-wider sidebar-text">Operaciones</div>
+            
+            <button onclick="switchView('shipments')" class="w-full flex items-center p-3 rounded-xl text-slate-300 hover:bg-white/10 hover:text-white transition group" id="btn-view-shipments">
+                <i class="fa-solid fa-truck-fast w-6 text-center text-lg"></i>
+                <span class="font-medium text-sm ml-3 sidebar-text">Envíos</span>
+            </button>
+            <button onclick="switchView('reports')" class="w-full flex items-center p-3 rounded-xl text-slate-300 hover:bg-white/10 hover:text-white transition group" id="btn-view-reports">
+                <i class="fa-solid fa-chart-pie w-6 text-center text-lg"></i>
+                <span class="font-medium text-sm ml-3 sidebar-text">Reportes</span>
+            </button>
+        </nav>
+        
+        <div class="p-4 bg-black/20 border-t border-white/5">
+            <button onclick="logout()" class="w-full bg-red-500/20 hover:bg-red-600 text-red-100 py-2.5 rounded-lg text-xs font-bold uppercase transition flex items-center justify-center group" title="Cerrar Sesión">
+                <i class="fa-solid fa-power-off text-lg group-hover:scale-110 transition-transform"></i>
+                <span class="ml-2 sidebar-text">Salir</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- BLOQUE 2: CONTENIDO PRINCIPAL -->
+    <main class="flex-1 overflow-hidden flex flex-col bg-slate-50 relative">
+        
+        <!-- DASHBOARD -->
+        <div id="view-dashboard" class="flex-1 flex flex-col h-full overflow-hidden fade-in">
+            <header class="bg-white shadow-sm border-b border-slate-200 p-8 shrink-0">
+                <h1 class="text-3xl font-bold text-brand-dark mb-1 tracking-tight">Panel de Control</h1>
+                <p class="text-slate-500 text-sm">Gestión integral del sistema de dispensación IHSS.</p>
+            </header>
+            <div class="flex-1 overflow-y-auto p-8 custom-scroll">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div onclick="switchView('users')" class="dash-card bg-white rounded-3xl p-8 border border-slate-100 shadow-sm cursor-pointer group">
+                        <div class="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform"><i class="fa-solid fa-user-shield"></i></div>
+                        <h3 class="font-bold text-slate-700 text-lg">Personal</h3>
+                        <p class="text-xs text-slate-400">Directorio y seguridad de acceso</p>
+                    </div>
+                    <div onclick="switchView('beneficiaries')" class="dash-card bg-white rounded-3xl p-8 border border-slate-100 shadow-sm cursor-pointer group">
+                        <div class="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform"><i class="fa-solid fa-hospital-user"></i></div>
+                        <h3 class="font-bold text-slate-700 text-lg">Pacientes</h3>
+                        <p class="text-xs text-slate-400">Expedientes y asignaciones</p>
+                    </div>
+                    <div onclick="switchView('geographic')" class="dash-card bg-white rounded-3xl p-8 border border-slate-100 shadow-sm cursor-pointer group">
+                        <div class="w-16 h-16 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform"><i class="fa-solid fa-map-location-dot"></i></div>
+                        <h3 class="font-bold text-slate-700 text-lg">Geografía</h3>
+                        <p class="text-xs text-slate-400">Zonas y Cobertura</p>
+                    </div>
+                    <div onclick="switchView('shipments')" class="dash-card bg-white rounded-3xl p-8 border border-slate-100 shadow-sm cursor-pointer group">
+                        <div class="w-16 h-16 rounded-2xl bg-cyan-50 text-brand-cyan flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform"><i class="fa-solid fa-truck-fast"></i></div>
+                        <h3 class="font-bold text-slate-700 text-lg">Logística</h3>
+                        <p class="text-xs text-slate-400">Monitoreo de rutas</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GESTIÓN DE PERSONAL -->
+        <div id="view-users" class="hidden-view flex-1 flex flex-col h-full overflow-hidden fade-in">
+            <header class="bg-white shadow-sm border-b border-slate-200 p-6 flex justify-between items-center shrink-0">
+                <h1 class="text-2xl font-bold text-brand-dark">Directorio de Personal</h1>
+                <div class="flex gap-2">
+                    <button onclick="balanceWorkload()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 px-4 py-2 rounded-xl font-bold text-xs shadow-sm transition-all flex items-center">
+                        <i class="fa-solid fa-scale-balanced mr-2"></i> Equilibrar Cargas
+                    </button>
+                    <button onclick="openUserModal()" class="bg-brand-dark hover:bg-brand-cyan text-white px-6 py-2.5 rounded-xl font-bold shadow-lg transition-all flex items-center text-sm"><i class="fa-solid fa-user-plus mr-2"></i> Nuevo Usuario</button>
+                </div>
+            </header>
+            <div class="flex-1 overflow-y-auto p-6 md:p-8 custom-scroll">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold tracking-wider">
+                            <tr><th class="p-5 pl-6">Colaborador</th><th class="p-5">Cargos</th><th class="p-5">Acceso</th><th class="p-5 text-center">Estatus</th><th class="p-5 pr-6 text-right">Acciones</th></tr>
+                        </thead>
+                        <tbody id="user-list" class="divide-y divide-slate-100 text-sm text-slate-600"><tr><td colspan="5" class="p-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Cargando...</td></tr></tbody></table>
+                </div>
+            </div>
+        </div>
+
+        <!-- GESTIÓN DERECHOHABIENTES -->
+        <div id="view-beneficiaries" class="hidden-view flex-1 flex flex-col h-full overflow-hidden fade-in">
+            <header class="bg-white shadow-sm border-b border-slate-200 p-6 flex justify-between items-center shrink-0">
+                <h1 class="text-2xl font-bold text-brand-dark tracking-tight">Gestión de Derechohabientes</h1>
+                <div class="flex gap-3">
+                    <div id="csvStatus" class="hidden flex items-center text-xs font-bold text-brand-clinical animate-pulse mr-2"><i class="fa-solid fa-sync fa-spin mr-1"></i> Cargando...</div>
+                    <label class="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg cursor-pointer flex items-center text-sm"><i class="fa-solid fa-file-excel mr-2"></i> Importar BD<input type="file" id="csvInput" accept=".csv, .xlsx, .xls" class="hidden" onchange="handleCSVUpload(this)"></label>
+                    <button onclick="openBeneficiaryModal()" class="bg-brand-dark hover:bg-brand-cyan text-white px-5 py-2.5 rounded-xl font-bold shadow-lg flex items-center text-sm"><i class="fa-solid fa-plus mr-2"></i> Crear Manual</button>
+                </div>
+            </header>
+            <div class="flex-1 overflow-y-auto p-6 md:p-8 custom-scroll">
+                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto"><table class="w-full text-left border-collapse"><thead class="bg-slate-50 text-[11px] uppercase text-slate-500 font-semibold tracking-wider"><tr><th class="p-5 pl-6">Paciente (Identidad / Tipo)</th><th class="p-5">Ubicación (Municipio)</th><th class="p-5">Zona Asignada</th><th class="p-5">Gestores</th><th class="p-5 text-right">Acciones</th></tr></thead><tbody id="ben-list" class="divide-y divide-slate-100 text-sm text-slate-600"></tbody></table></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GESTIÓN GEOGRÁFICA -->
+        <div id="view-geographic" class="hidden-view flex-1 flex flex-col h-full overflow-hidden fade-in">
+            <header class="bg-white shadow-sm border-b border-slate-200 p-6 flex justify-between items-center shrink-0">
+                <h1 class="text-2xl font-bold text-brand-dark tracking-tight">Gestión Geográfica (Zonas)</h1>
+                <button onclick="createGeoArea()" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg flex items-center text-sm"><i class="fa-solid fa-map-pin mr-2"></i> Nueva Zona</button>
+            </header>
+            <div class="flex-1 overflow-y-auto p-8 custom-scroll">
+                <div id="geo-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    <!-- Tarjetas de zonas dinámicas -->
+                </div>
+            </div>
+        </div>
+
+        <!-- LOGÍSTICA -->
+        <div id="view-shipments" class="hidden-view flex-1 flex flex-col h-full overflow-hidden fade-in">
+            <header class="bg-white shadow-sm border-b border-slate-200 p-6 flex justify-between items-center shrink-0">
+                <div><h1 class="text-2xl font-bold text-brand-dark flex items-center"><i class="fa-solid fa-truck-ramp-box mr-3 text-brand-cyan"></i> Gestión de Envíos</h1><nav class="flex text-xs text-slate-500 mt-1" id="ship-breadcrumb"><span class="font-bold text-brand-dark">Inicio</span></nav></div>
+            </header>
+            <div class="flex-1 overflow-y-auto p-6 md:p-8 custom-scroll bg-slate-50/50">
+                <div id="ship-years" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"><div onclick="openYear(2026)" class="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 hover:border-brand-cyan hover:shadow-xl cursor-pointer text-center group transition-all">
+                    <div class="text-4xl font-bold text-brand-dark group-hover:text-brand-cyan mb-2">2026</div><p class="text-xs text-slate-400 uppercase tracking-widest">Año Fiscal</p>
+                </div></div>
+                <div id="ship-months" class="hidden grid grid-cols-1 md:grid-cols-4 gap-4 fade-in"></div>
+                <div id="ship-days" class="hidden fade-in"><div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6"><div class="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-bold text-slate-400 uppercase"><div>Dom</div><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div></div><div id="calendar-grid" class="grid grid-cols-7 gap-2"></div></div></div>
+            </div>
+            <aside class="w-full md:w-80 bg-white border-l border-slate-200 shadow-xl flex flex-col z-20">
+                <div class="p-5 border-b border-slate-100 bg-brand-light">
+                    <h3 class="font-bold text-brand-teal flex items-center text-sm uppercase tracking-wider"><i class="fa-solid fa-robot mr-2 text-brand-cyan"></i> Planificador IA</h3>
+                    <p class="text-[10px] text-slate-500 mt-1">Detección de ciclos de recetas.</p>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4 custom-scroll" id="ai-suggestions-list">
+                    <div class="text-center py-10 px-4">
+                        <button onclick="runAIScheduler()" class="bg-brand-cyan hover:bg-brand-teal text-white px-6 py-2.5 rounded-full font-bold shadow-lg transition-transform transform active:scale-95 text-xs w-full mb-4">
+                            <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> ANALIZAR PRÓXIMO MES
+                        </button>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- REPORTES -->
+        <div id="view-reports" class="hidden-view flex-1 flex flex-col h-full overflow-hidden fade-in items-center justify-center text-center">
+            <div class="bg-white p-10 rounded-full shadow-lg mb-6 ring-8 ring-slate-100"><i class="fa-solid fa-chart-pie text-6xl text-slate-300"></i></div>
+            <h2 class="text-3xl font-bold text-slate-700 mb-2">Módulo de Reportes</h2>
+            <p class="text-slate-500 max-w-md">Próximamente</p>
+        </div>
+    </main>
+
+    <!-- BLOQUE 3: MODALES Y FORMULARIOS -->
+    
+    <!-- MODAL CSV PROGRESS (INTERACTIVO Y RÁPIDO) -->
+    <div id="csvProgressModal" class="fixed inset-0 modal-backdrop hidden z-[200] flex items-center justify-center p-4 fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-2 bg-slate-100"><div id="uploadBarTop" class="h-full bg-brand-cyan transition-all duration-300" style="width: 0%"></div></div>
+            <div class="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600 text-2xl animate-bounce"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+            <h3 class="text-xl font-bold text-brand-dark mb-1">Sincronizando Base de Datos</h3>
+            <p class="text-sm text-slate-500 mb-6" id="uploadStatus">Preparando carga masiva...</p>
+            <div class="bg-slate-100 rounded-full h-4 w-full overflow-hidden mb-2"><div id="uploadBar" class="bg-gradient-to-r from-blue-500 to-cyan-400 h-full rounded-full transition-all duration-300" style="width: 0%"></div></div>
+            <p class="text-xs font-bold text-slate-400" id="uploadCount">0%</p>
+        </div>
+    </div>
+
+    <!-- MODAL USUARIO -->
+    <div id="userModal" class="fixed inset-0 modal-backdrop hidden z-[110] flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-3xl flex flex-col max-h-[90vh] shadow-2xl">
+            <div class="bg-brand-dark p-6 text-white flex justify-between items-center rounded-t-3xl shrink-0">
+                <h3 class="font-bold text-lg" id="userModalTitle">Gestión de Personal</h3>
+                <button onclick="closeModal()" class="hover:text-red-300 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scroll">
+                <form id="userForm">
+                    <input type="hidden" id="editUid">
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <input id="formDni" placeholder="DNI" class="border p-2.5 rounded-xl bg-slate-50 focus:bg-white outline-none focus:border-brand-cyan transition-all">
+                        <input id="formName" placeholder="Nombre Completo" class="border p-2.5 rounded-xl bg-slate-50 focus:bg-white outline-none focus:border-brand-cyan transition-all">
+                        <input id="formUser" placeholder="Usuario" class="border p-2.5 rounded-xl bg-slate-50 focus:bg-white outline-none focus:border-brand-cyan transition-all">
+                        <input id="formPass" type="password" placeholder="Contraseña Nueva" class="border p-2.5 rounded-xl bg-slate-50 focus:bg-white outline-none focus:border-brand-cyan transition-all">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <select id="formDept" onchange="updateRoles()" class="border p-2.5 rounded-xl bg-white outline-none focus:border-brand-cyan transition-all">
+                            <option disabled selected value="">Departamento...</option>
+                            <option value="farmacia">Farmacia</option>
+                            <option value="contact_center">Contact Center</option>
+                            <option value="operaciones">Operaciones</option>
+                            <option value="calidad">Calidad</option>
+                            <option value="logistica">Logística</option>
+                            <option value="repartidor">Delivery</option>
+                            <option value="admin">Administrador</option>
+                        </select>
+                        <select id="formJob" multiple class="border p-2.5 rounded-xl h-32 bg-white text-xs custom-scroll outline-none focus:border-brand-cyan"></select>
+                    </div>
+                    <div class="bg-blue-50 p-5 rounded-2xl border border-blue-100">
+                        <h4 class="text-xs font-bold text-brand-dark uppercase mb-4 flex items-center"><i class="fa-solid fa-shield-halved mr-2"></i> Seguridad</h4>
+                        <div class="flex items-center justify-between mb-4 bg-white p-3 rounded-xl border border-blue-100 shadow-sm">
+                             <div class="text-sm font-semibold text-slate-700">Validación Dispositivo/IP Nueva</div>
+                             <label class="relative inline-flex items-center cursor-pointer">
+                                 <input type="checkbox" id="formIpCheck" class="sr-only peer">
+                                 <div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-clinical transition-all"></div>
+                             </label>
+                        </div>
+                        <input id="formIpKey" class="w-full border p-3 rounded-xl text-xs mb-4 outline-none focus:border-brand-cyan font-mono shadow-sm bg-white" placeholder="LLAVE DE DESBLOQUEO IP">
+                        <div class="flex flex-wrap gap-2 mb-4">
+                            <label class="text-xs bg-white border px-3 py-1.5 rounded-full cursor-pointer hover:border-brand-cyan transition shadow-sm"><input type="checkbox" class="day-check mr-1" value="Lunes"> L</label>
+                            <label class="text-xs bg-white border px-3 py-1.5 rounded-full cursor-pointer hover:border-brand-cyan transition shadow-sm"><input type="checkbox" class="day-check mr-1" value="Martes"> M</label>
+                            <label class="text-xs bg-white border px-3 py-1.5 rounded-full cursor-pointer hover:border-brand-cyan transition shadow-sm"><input type="checkbox" class="day-check mr-1" value="Miercoles"> X</label>
+                            <label class="text-xs bg-white border px-3 py-1.5 rounded-full cursor-pointer hover:border-brand-cyan transition shadow-sm"><input type="checkbox" class="day-check mr-1" value="Jueves"> J</label>
+                            <label class="text-xs bg-white border px-3 py-1.5 rounded-full cursor-pointer hover:border-brand-cyan transition shadow-sm"><input type="checkbox" class="day-check mr-1" value="Viernes"> V</label>
+                            <label class="text-xs bg-white border px-3 py-1.5 rounded-full cursor-pointer hover:border-brand-cyan transition shadow-sm"><input type="checkbox" class="day-check mr-2" value="Sabado"> S</label>
+                            <label class="text-xs bg-white border px-3 py-1.5 rounded-full cursor-pointer hover:border-brand-cyan transition shadow-sm"><input type="checkbox" class="day-check mr-2" value="Domingo"> D</label>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <input type="time" id="formStart" class="w-full border p-2 rounded-xl text-sm bg-white shadow-sm outline-none">
+                            <input type="time" id="formEnd" class="w-full border p-2 rounded-xl text-sm bg-white shadow-sm outline-none">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="p-6 border-t border-slate-100 flex justify-end gap-3 rounded-b-3xl bg-slate-50">
+                <button onclick="closeModal()" class="px-5 py-2 text-sm font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
+                <button onclick="saveUser()" id="btnSave" class="bg-brand-clinical text-white px-8 py-2.5 rounded-xl font-bold shadow-lg transform active:scale-95 transition-all">Guardar Datos</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL BENEFICIARIO (DOBLE ASIGNACIÓN + VENTANILLA) -->
+    <div id="benModal" class="fixed inset-0 modal-backdrop hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-4xl flex flex-col max-h-[90vh] shadow-2xl">
+            <div class="bg-brand-dark p-6 text-white flex justify-between items-center rounded-t-3xl shrink-0">
+                <h3 class="font-bold text-lg" id="benModalTitle">Expediente de Paciente</h3>
+                <button onclick="document.getElementById('benModal').classList.add('hidden')" class="hover:text-red-300 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scroll">
+                <form id="benForm" class="space-y-6">
+                    <div class="grid grid-cols-2 gap-5">
+                        <div><label class="text-xs font-bold text-slate-400 uppercase ml-1">ID (Cédula)</label><input id="benId" class="w-full border p-2.5 rounded-xl bg-slate-50 outline-none focus:border-brand-cyan" required></div>
+                        <div><label class="text-xs font-bold text-slate-400 uppercase ml-1">Nombre Completo</label><input type="text" id="benName" class="w-full border p-2.5 rounded-xl bg-slate-50 outline-none focus:border-brand-cyan" required></div>
+                        <div><label class="text-xs font-bold text-slate-400 uppercase ml-1">Teléfono</label><input type="text" id="benPhone" class="w-full border p-2.5 rounded-xl bg-slate-50 outline-none focus:border-brand-cyan" required></div>
+                        <div><label class="text-xs font-bold text-slate-400 uppercase ml-1">Municipio</label><input type="text" id="benMuni" class="w-full border p-2.5 rounded-xl bg-slate-50 outline-none focus:border-brand-cyan" required></div>
+                        <div class="col-span-2"><label class="text-xs font-bold text-slate-400 uppercase ml-1">Dirección Exacta</label><input type="text" id="benAddr" class="w-full border p-2.5 rounded-xl bg-slate-50 outline-none focus:border-brand-cyan" required></div>
+                    </div>
+                    <div class="bg-blue-50 p-5 rounded-2xl border border-blue-100 grid grid-cols-2 gap-5">
+                        <div><label class="text-[10px] font-bold text-blue-700 uppercase ml-1">Última Dispensación</label><input type="date" id="benLastDispense" class="w-full border border-blue-200 p-2 rounded-xl text-sm bg-white outline-none" onchange="calculateNextDate()"></div>
+                        <div><label class="text-[10px] font-bold text-blue-700 uppercase ml-1">Próximo Envío (Admin)</label><input type="date" id="benNextShipment" class="w-full border border-blue-200 p-2 rounded-xl text-sm bg-white outline-none"></div>
+                    </div>
+                    
+                    <!-- CONTACTO FAMILIAR -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 relative">
+                        <h4 class="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center"><i class="fa-solid fa-users mr-2"></i> Contacto Familiar</h4>
+                        <div class="grid grid-cols-2 gap-5">
+                            <div><label class="text-[10px] font-bold text-slate-400 uppercase">Nombre Familiar</label><input type="text" id="benFamName" class="w-full border p-2 rounded-lg bg-white outline-none"></div>
+                            <div><label class="text-[10px] font-bold text-slate-400 uppercase">Teléfono Familiar</label><input type="text" id="benFamPhone" class="w-full border p-2 rounded-lg bg-white outline-none"></div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center p-3 bg-orange-50 border border-orange-100 rounded-lg">
+                        <input type="checkbox" id="benPickup" class="w-5 h-5 text-orange-600 rounded-lg border-gray-300 mr-3 cursor-pointer" onchange="toggleCCAssign()">
+                        <label for="benPickup" class="text-sm font-bold text-slate-700 cursor-pointer uppercase">Entregar en Ventanilla (Omitir Contact Center)</label>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-5">
+                        <div><label class="text-xs font-bold text-slate-400 uppercase ml-1">Tipo de Afiliado</label><select id="benType" class="w-full border p-2.5 rounded-xl bg-white outline-none"><option>Afiliado Directo</option><option>Jubilado</option><option>Pensionado</option><option>Beneficiaria Padre</option><option>Beneficiaria(o) Compañera(o)</option><option>Beneficiaria(o) Esposa(o)</option><option>Beneficiaria Hijo(a)</option></select></div>
+                        <div><label class="text-xs font-bold text-emerald-600 uppercase ml-1">Gestor Farmacia</label><select id="benAssignPharma" class="w-full border p-2.5 rounded-xl bg-white outline-none border-emerald-200 focus:border-emerald-500"></select></div>
+                        <div><label class="text-xs font-bold text-blue-600 uppercase ml-1">Gestor CC</label><select id="benAssignCC" class="w-full border p-2.5 rounded-xl bg-white outline-none border-blue-200 focus:border-blue-500"></select></div>
+                    </div>
+                </form>
+            </div>
+            <div class="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0">
+                <button type="button" onclick="document.getElementById('benModal').classList.add('hidden')" class="px-5 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
+                <button type="button" onclick="saveBeneficiary()" id="btnSaveBen" class="bg-brand-dark hover:bg-brand-cyan text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-lg">Guardar</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- MODAL DE ASIGNACIÓN GEOGRÁFICA RÁPIDA -->
+    <div id="geoAssignModal" class="fixed inset-0 modal-backdrop hidden z-[120] flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl w-full max-w-sm shadow-xl border border-slate-100 p-6">
+            <h3 class="text-lg font-bold text-slate-700 mb-2">Asignar Zona</h3>
+            <p class="text-xs text-slate-400 mb-4" id="geoAssignBenName">...</p>
+            <input type="hidden" id="geoAssignBenId">
+            <select id="geoAssignSelect" class="w-full border p-2 rounded-xl mb-4 bg-slate-50 text-sm outline-none focus:border-brand-cyan">
+                <option value="" disabled selected>Seleccione Zona...</option>
+                <!-- Se llenará dinámicamente -->
+            </select>
+            <div class="flex justify-end gap-2">
+                <button onclick="document.getElementById('geoAssignModal').classList.add('hidden')" class="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+                <button onclick="saveGeoAssignment()" class="bg-brand-cyan text-white px-4 py-2 rounded-lg text-xs font-bold shadow-lg">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DETALLE DE DÍA -->
+    <div id="dayModal" class="fixed inset-0 modal-backdrop hidden z-[110] flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-4xl flex flex-col max-h-[90vh] shadow-2xl overflow-hidden">
+            <div class="bg-white border-b p-5 flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-4">
+                    <h3 class="font-bold text-lg text-brand-dark flex items-center"><i class="fa-regular fa-calendar-check mr-2 text-brand-cyan"></i> Envíos <span id="dayModalDate" class="ml-1 text-slate-600 font-normal"></span></h3>
+                    <button onclick="downloadDayReport()" class="bg-green-100 text-green-700 text-[10px] font-bold px-3 py-1.5 rounded-lg hover:bg-green-200 transition"><i class="fa-solid fa-file-csv mr-1"></i> EXPORTAR CSV / EXCEL</button>
+                </div>
+                <button onclick="document.getElementById('dayModal').classList.add('hidden')" class="text-slate-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="flex border-b border-slate-100 shrink-0">
+                <button onclick="switchDayTab('route')" id="tab-route" class="w-1/2 py-3 text-xs font-bold tab-btn active uppercase tracking-wider">🚚 Domicilio (Ruta)</button>
+                <button onclick="switchDayTab('pickup')" id="tab-pickup" class="w-1/2 py-3 text-xs font-bold tab-btn uppercase tracking-wider">🏢 Ventanilla (Retiro)</button>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scroll bg-slate-50/30 flex-1">
+                <div id="content-route" class="space-y-4"></div>
+                <div id="content-pickup" class="space-y-4 hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL HISTORIAL -->
+    <div id="historyModal" class="fixed inset-0 modal-backdrop hidden z-[120] flex items-center justify-center p-4"><div class="bg-white rounded-3xl w-full max-w-3xl flex flex-col shadow-2xl max-h-[85vh] overflow-hidden"><div class="bg-brand-dark p-5 text-white flex justify-between shrink-0 font-bold"><h3>Historial de Envíos</h3><button onclick="document.getElementById('historyModal').classList.add('hidden')"><i class="fa-solid fa-xmark text-xl"></i></button></div><div class="p-6 overflow-y-auto custom-scroll"><table class="w-full text-left text-sm"><thead class="bg-slate-50 text-slate-500 font-bold uppercase text-[10px]"><tr><th class="p-3">Fecha</th><th class="p-3">Guía</th><th class="p-3">Estado</th><th class="p-3 text-right">Etapa</th></tr></thead><tbody id="hist-list" class="divide-y divide-slate-100 text-slate-600"></tbody></table></div></div></div>
+
+    <!-- MODAL NUEVO ENVÍO -->
+    <div id="shipmentModal" class="fixed inset-0 modal-backdrop hidden z-[80] flex items-center justify-center p-4"><div class="bg-white rounded-2xl w-full max-w-xl flex flex-col"><div class="bg-brand-dark p-5 flex justify-between text-white"><h3 class="font-bold">Nueva Guía</h3><button onclick="document.getElementById('shipmentModal').classList.add('hidden')"><i class="fa-solid fa-xmark"></i></button></div><div class="p-6"><form id="shipForm" class="space-y-4"><input type="hidden" id="shipDate"><p id="shipDateDisplay" class="font-bold text-center"></p><select id="shipBeneficiary" class="border w-full p-2 rounded"><option>Cargando...</option></select><input id="shipGuide" placeholder="Tracking #" class="border w-full p-2 rounded"><select id="shipStatus" class="border w-full p-2 rounded"><option>Nuevo</option><option>En Proceso</option><option>Confirmacion CC</option><option>Retorno Farmacia</option><option>Empaquetado</option><option>Revision Calidad</option><option>Listo Logistica</option><option>En Ruta</option><option>Entregado</option></select></form></div><div class="p-5 border-t flex justify-end gap-3"><button onclick="document.getElementById('shipmentModal').classList.add('hidden')" class="text-slate-500">Cancelar</button><button onclick="saveShipment()" class="bg-brand-cyan text-white px-4 py-2 rounded">Guardar</button></div></div></div>
+
+    <!-- SCRIPTS -->
+    <script type="module">
+        import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId } from "./js/core/firebase.js";
+import { signOut, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { collection, addDoc, setDoc, doc, getDoc, onSnapshot, updateDoc, deleteDoc, query, where, getDocs, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+import { getSecondary } from "./js/core/secondary.js";
+import { requireAuthAndPolicy } from "./js/core/guards.js";
+import { startIdleLogout } from "./js/core/idle.js";
+import { isEligiblePharma, isEligibleCC, pickRoundRobin } from "./js/core/assignments.js";
+
+// Secondary Auth (no afecta la sesión principal)
+const { secondaryAuth } = await getSecondary();
+
+let deviceId = getDeviceId();
+
+
+        window.isPreviewMode = false;
+        window.isCreatingUser = false;
+        let currentYear = null, currentMonth = null, selectedDate = null;
+        const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+        /* --- DECLARACIÓN DE FUNCIONES DE RENDERIZADO --- */
+
+        window.renderUserRow = function(u, docId) {
+             const jobs = Array.isArray(u.jobTitle) ? u.jobTitle : [u.jobTitle || 'General'];
+             const jobsDisplay = jobs.map(j => `<span class="bg-slate-100 px-2 py-0.5 rounded text-[10px] mr-1 border border-slate-200">${j}</span>`).join('');
+             return `
+                <tr class="hover:bg-blue-50/40 border-b border-slate-50 transition group">
+                    <td class="p-5 pl-6"><div class="flex items-center"><div class="w-10 h-10 rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center text-sm font-bold text-brand-dark mr-3 uppercase shrink-0">${u.name.charAt(0)}</div><div><div class="font-bold text-slate-700 text-sm">${u.name}</div><div class="text-[11px] text-slate-400 font-mono">${u.dni||'--'}</div></div></div></td>
+                    <td class="p-5"><div class="flex flex-col gap-1"><span class="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded text-[10px] font-bold uppercase w-fit">${u.role.replace('_',' ')}</span><div class="flex flex-wrap gap-1 mt-1">${jobsDisplay}</div></div></td>
+                    <td class="p-5"><span class="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded border border-slate-200">${u.username}</span></td>
+                    <td class="p-5 text-center"><span class="text-[10px] font-bold ${u.status==='online'?'text-emerald-500':'text-slate-400'}">${u.status==='online'?'ONLINE':'OFFLINE'}</span></td>
+                    <td class="p-5 pr-6 text-right"><div class="flex justify-end gap-2 opacity-80 hover:opacity-100 transition-opacity"><button onclick="openUserModal(true, '${encodeURIComponent(JSON.stringify({...u, docId}))}')" class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition flex items-center justify-center border border-blue-100 shadow-sm" title="Editar"><i class="fa-solid fa-pen"></i></button><button onclick="deleteUser('${docId}', '${u.uid}', '${u.name}', '${u.role}')" class="w-8 h-8 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition flex items-center justify-center border border-red-100 shadow-sm" title="Baja"><i class="fa-solid fa-user-slash"></i></button></div></td>
+                </tr>`;
+        };
+
+        window.renderTimelineItem = function(ship) {
+            const statusMap = { 'Nuevo': 1, 'En Proceso': 1, 'Confirmacion CC': 2, 'Retorno Farmacia': 3, 'Empaquetado': 4, 'Revision Calidad': 5, 'Listo Logistica': 6, 'En Ruta': 7, 'Entregado': 8 };
+            let step = statusMap[ship.status] || 1;
+            const stepsHtml = [ {l:'FARM', i:1}, {l:'CC', i:2}, {l:'FARM', i:3}, {l:'OPER', i:4}, {l:'CALI', i:5}, {l:'LOGI', i:6}, {l:'RUTA', i:7}, {l:'ENTR', i:8} ].map(s => { 
+                const active = s.i <= step ? 'timeline-active' : ''; 
+                return `<div class="flex-1 flex flex-col items-center timeline-step ${active}"><div class="w-5 h-5 rounded-full border-2 border-slate-200 bg-white flex items-center justify-center text-[7px] font-bold transition-colors step-dot z-10">${s.i}</div><span class="text-[6px] mt-1 font-bold text-slate-400 uppercase">${s.l}</span></div>`; 
+            }).join('');
+            return `<div class="bg-white p-4 rounded-2xl border shadow-sm"><div class="flex justify-between items-start mb-3"><div><h4 class="font-bold text-brand-dark">${ship.beneficiaryName}</h4><span class="text-[10px] text-slate-400 font-mono">ID: ${ship.beneficiaryId} | ${ship.guideNumber || 'PENDIENTE'}</span></div><span class="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-[9px] font-bold uppercase">${ship.status}</span></div><div class="flex relative">${stepsHtml}</div></div>`;
+        };
+
+        /* --- FUNCIONES DE NAVEGACIÓN --- */
+
+        function safeNavigate(targetUrl) {
+            try {
+                window.location.href = targetUrl;
+            } catch (e) {
+                console.warn("Redirección bloqueada:", e);
+                if (targetUrl === 'index.html') {
+                    document.body.innerHTML = `<div style="height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif; background:#003366; color:white; text-align:center;"><h2 style="margin-bottom:20px;">Sesión Finalizada</h2><a href="./index.html" style="background:#06b6d4; color:white; padding:12px 30px; border-radius:8px; text-decoration:none; font-weight:bold;">VOLVER AL LOGIN</a></div>`;
+                }
+            }
+        }
+
+        window.switchView = function(viewId) {
+            ['users','beneficiaries','dashboard','shipments','reports','geographic'].forEach(id => {
+                const el = document.getElementById(`view-${id}`);
+                const btn = document.getElementById(`btn-view-${id}`);
+                if(el) el.classList.add('hidden-view');
+                if(btn) btn.classList.replace('text-white','text-slate-300');
+            });
+            document.getElementById(`view-${viewId}`).classList.remove('hidden-view');
+            const toggle = document.getElementById('sidebar-toggle-icon');
+            if(toggle && !toggle.classList.contains('fa-chevron-right')) { // Solo resetear si no está colapsado
+                document.getElementById(`btn-view-${viewId}`).classList.replace('text-slate-300','text-white');
+            }
+        };
+
+        // Sidebar Toggle Logic
+        let isSidebarExpanded = true;
+        window.toggleSidebar = () => {
+            const sidebar = document.getElementById('sidebar');
+            const icon = document.getElementById('sidebar-toggle-icon');
+            const texts = document.querySelectorAll('.sidebar-text');
+            const logoText = document.querySelector('.sidebar-header-text');
+            const logo = document.getElementById('sidebar-logo');
+            
+            isSidebarExpanded = !isSidebarExpanded;
+
+            if (isSidebarExpanded) {
+                sidebar.classList.remove('w-20');
+                sidebar.classList.add('w-72');
+                icon.classList.remove('fa-chevron-right');
+                icon.classList.add('fa-chevron-left');
+                sidebar.classList.remove('collapsed');
+                setTimeout(() => {
+                    texts.forEach(t => { t.style.display = 'inline'; setTimeout(()=>t.style.opacity=1, 50) });
+                    if(logoText) logoText.style.display = 'block';
+                }, 150);
+            } else {
+                sidebar.classList.remove('w-72');
+                sidebar.classList.add('w-20');
+                icon.classList.remove('fa-chevron-left');
+                icon.classList.add('fa-chevron-right');
+                sidebar.classList.add('collapsed');
+                texts.forEach(t => { t.style.opacity = 0; setTimeout(()=>t.style.display='none', 200) });
+                if(logoText) logoText.style.display = 'none';
+            }
+        };
+
+        window.forceNavigateLogin = () => safeNavigate('index.html');
+        window.logout = async () => { if(confirm("¿Cerrar sesión?")) signOut(auth).then(()=>safeNavigate('index.html')); };
+
+        /* --- BLOQUE: SEGURIDAD (WATCHDOG) --- */
+        let inactivityTimer;
+        const TIMEOUT_LIMIT = 30 * 60 * 1000; 
+        const resetInactivityTimer = () => {
+            clearTimeout(inactivityTimer);
+            if(auth.currentUser && document.getElementById('auth-lock').classList.contains('hidden')) {
+               inactivityTimer = setTimeout(() => { signOut(auth); }, TIMEOUT_LIMIT);
+            }
+        };
+        const checkSession = (u) => {
+             onSnapshot(doc(db, 'artifacts', appId, 'users', u.uid, 'profile', 'data'), (snap) => {
+                 if(snap.exists()) {
+                     const data = snap.data();
+                     if (data.requireIpApproval && data.activeSessionId && data.activeSessionId !== deviceId) {
+                         showLockScreen("Sesión iniciada en otro dispositivo.");
+                         signOut(auth); return;
+                     }
+                     if (data.role !== 'admin') showLockScreen("Acceso Denegado.");
+                     else document.getElementById('auth-lock').classList.add('hidden');
+                 }
+             }, (e) => console.error("Session monitor error:", e));
+        };
+        ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(evt => window.addEventListener(evt, resetInactivityTimer));
+
+        /* --- BLOQUE: GESTIÓN DE PERSONAL --- */
+        const roleDefinitions = {
+            'farmacia': [{val:'Revisión y Asignación',label:'Revisión y Asignación'},{val:'Despacho de Medicamentos',label:'Despacho'},{val:'Gestión de Inventario',label:'Inventario'},{val:'Supervisor de Farmacia',label:'Supervisor'}],
+            'contact_center': [{val:'Agente Contact Center',label:'Agente Normal'},{val:'Supervisor CC',label:'Supervisor CC'}],
+            'operaciones': [{val:'Operador',label:'Operador de Empaque'},{val:'Supervisor Operaciones',label:'Supervisor Operaciones'}],
+            'calidad': [{val:'Revisor de Paquetes',label:'Revisor de Paquetes'},{val:'Controlador Observaciones',label:'Controlador de Observaciones'},{val:'Supervisor Calidad',label:'Supervisor Calidad'}],
+            'logistica': [{val:'Asignador de Rutas',label:'Asignador de Rutas'},{val:'Despachador Delivery',label:'Despachador Delivery'},{val:'Supervisor Logística',label:'Supervisor Logística'}],
+            'repartidor': [{val:'Motorista',label:'Motorista'},{val:'Supervisor de Flota',label:'Supervisor de Flota'}],
+            'admin': [{val:'Super Admin',label:'Administrador Total'}]
+        };
+
+        window.updateRoles = function(selectedJobs = []) {
+            const dept = document.getElementById('formDept').value;
+            const select = document.getElementById('formJob');
+            select.innerHTML = '';
+            if (dept && roleDefinitions[dept]) {
+                select.disabled = false;
+                roleDefinitions[dept].forEach(role => {
+                    const opt = document.createElement('option');
+                    opt.value = role.val; opt.innerText = role.label;
+                    if(selectedJobs.includes(role.val)) opt.selected = true;
+                    select.appendChild(opt);
+                });
+            } else { select.disabled = true; }
+        };
+
+        window.openUserModal = function(isEdit = false, encodedData = null) {
+            document.getElementById('userForm').reset();
+            const userData = encodedData ? JSON.parse(decodeURIComponent(encodedData)) : null;
+            document.getElementById('userModalTitle').innerText = isEdit ? "Editar Personal" : "Nuevo Ingreso";
+            document.getElementById('btnSave').innerText = isEdit ? "Actualizar Usuario" : "Crear Usuario";
+            if(isEdit && userData) {
+                document.getElementById('editUid').value = userData.uid;
+                document.getElementById('formDni').value = userData.dni || '';
+                document.getElementById('formName').value = userData.name;
+                document.getElementById('formUser').value = userData.username; document.getElementById('formUser').disabled = true;
+                document.getElementById('formDept').value = userData.role;
+                window.updateRoles(userData.jobTitle || []);
+                document.getElementById('formIpCheck').checked = userData.requireIpApproval || false;
+                document.getElementById('formIpKey').value = userData.ipUnlockKey || '';
+                document.getElementById('formStart').value = userData.shiftStart || '';
+                document.getElementById('formEnd').value = userData.shiftEnd || '';
+                document.querySelectorAll('.day-check').forEach(cb => { if(userData.allowedDays?.includes(cb.value)) cb.checked = true; });
+            } else {
+                document.getElementById('editUid').value = ""; document.getElementById('formUser').disabled = false;
+                window.updateRoles();
+            }
+            document.getElementById('userModal').classList.remove('hidden');
+        };
+
+        window.closeModal = () => document.getElementById('userModal').classList.add('hidden');
+
+        window.saveUser = async () => {
+            const btn = document.getElementById('btnSave');
+            const uid = document.getElementById('editUid').value;
+            const user = document.getElementById('formUser').value.trim().toLowerCase();
+            const pass = document.getElementById('formPass').value;
+            const dept = document.getElementById('formDept').value;
+            const jobs = Array.from(document.getElementById('formJob').selectedOptions).map(o => o.value);
+            if(!user || !dept || jobs.length === 0) return alert("Faltan datos.");
+            btn.disabled = true; btn.innerText = "...";
+            try {
+                const userData = { dni: document.getElementById('formDni').value, name: document.getElementById('formName').value, username: user, role: dept, jobTitle: jobs, requireIpApproval: document.getElementById('formIpCheck').checked, ipUnlockKey: document.getElementById('formIpKey').value, shiftStart: document.getElementById('formStart').value, shiftEnd: document.getElementById('formEnd').value, allowedDays: Array.from(document.querySelectorAll('.day-check:checked')).map(c => c.value), lastUpdate: new Date().toISOString() };
+                if(uid) {
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', uid, 'profile', 'data'), userData);
+                    const qDir = query(collection(db, 'artifacts', appId, 'public', 'data', 'users_directory'), where('uid', '==', uid));
+                    const snapDir = await getDocs(qDir); snapDir.forEach(d => updateDoc(d.ref, userData));
+                } else {
+                    window.isCreatingUser = true;
+                    const cred = await createUserWithEmailAndPassword(secondaryAuth, user + DOMAIN_SUFFIX, document.getElementById('formPass').value);
+                    await signOut(secondaryAuth);
+                    userData.uid = cred.user.uid; userData.status = 'offline';
+                    await setDoc(doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'data'), userData);
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users_directory'), userData);
+                }
+                alert("Guardado."); window.closeModal();
+            } catch(e) { alert("Error: " + e.message); } finally { btn.disabled = false; btn.innerText = uid ? "Actualizar Usuario" : "Crear Usuario"; window.isCreatingUser = false; }
+        };
+
+        window.deleteUser = async (docId, uid, name, role) => {
+            if(!confirm(`¿Dar de baja definitiva a ${name}?`)) return;
+            try {
+                const qAgents = query(collection(db, 'artifacts', appId, 'public', 'data', 'users_directory'), where('role', '==', role), where('uid', '!=', uid));
+                const snapAgents = await getDocs(qAgents);
+                if(!snapAgents.empty) {
+                    const field = role === 'farmacia' ? 'assignedPharma.uid' : 'assignedCC.uid';
+                    const qPatients = query(collection(db, 'artifacts', appId, 'public', 'data', 'beneficiaries'), where(field, '==', uid));
+                    const snapPatients = await getDocs(qPatients);
+                    if(!snapPatients.empty) {
+                        const batch = writeBatch(db);
+                        const agents = []; snapAgents.forEach(d => agents.push(d.data()));
+                        snapPatients.forEach(p => {
+                            const next = agents[Math.floor(Math.random() * agents.length)];
+                            const update = role === 'farmacia' ? { assignedPharma: { uid: next.uid, name: next.name } } : { assignedCC: { uid: next.uid, name: next.name } };
+                            batch.update(p.ref, update);
+                        });
+                        await batch.commit();
+                    }
+                }
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users_directory', docId));
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', uid, 'profile', 'data'));
+                alert("Eliminado.");
+            } catch(e) { alert("Error al eliminar."); }
+        };
+
+        onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'users_directory'), (s) => {
+            const l = document.getElementById('user-list'); if(!l) return; l.innerHTML = '';
+            s.forEach(d => l.innerHTML += window.renderUserRow(d.data(), d.id));
+        });
+
+        /* --- BLOQUE: ROUND ROBIN HELPER --- */
+// Usando pickRoundRobin() centralizado en /js/core/assignments.js
+/* --- BLOQUE: DERECHOHABIENTES Y CSV (ACTUALIZADO: PROGRESO VISUAL) --- */
+        window.calculateNextDate = () => { const last = document.getElementById('benLastDispense').value; if(last) { const date = new Date(last); date.setDate(date.getDate() + 30); document.getElementById('benNextShipment').value = date.toISOString().split('T')[0]; } };
+        window.toggleCCAssign = () => { const p = document.getElementById('benPickup').checked; document.getElementById('benAssignCC').disabled = p; };
+        
+        async function loadAssignableLists(phU = null, ccU = null) {
+          const phS = document.getElementById('benAssignPharma');
+          const ccS = document.getElementById('benAssignCC');
+        
+          phS.innerHTML = '<option value="">-- Seleccionar Farmacia --</option>';
+          ccS.innerHTML = '<option value="">-- Seleccionar CC --</option>';
+        
+          const snap = await getDocs(
+            collection(db, 'artifacts', appId, 'public', 'data', 'users_directory')
+          );
+        
+          snap.forEach(docSnap => {
+            const u = docSnap.data();
+            const jobs = Array.isArray(u.jobTitle) ? u.jobTitle : [];
+        
+            /** FARMACIA → SOLO REVISIÓN Y ASIGNACIÓN **/
+            if (
+              isEligiblePharma(u)
+            ) {
+              const opt = document.createElement('option');
+              opt.value = `${u.uid}|${u.name}`;
+              opt.textContent = u.name;
+              if (u.uid === phU) opt.selected = true;
+              phS.appendChild(opt);
+            }
+        
+            /** CONTACT CENTER → SOLO AGENTE **/
+            if (
+              isEligibleCC(u)
+            ) {
+              const opt = document.createElement('option');
+              opt.value = `${u.uid}|${u.name}`;
+              opt.textContent = u.name;
+              if (u.uid === ccU) opt.selected = true;
+              ccS.appendChild(opt);
+            }
+          });
+        }
+
+        window.openBeneficiaryModal = (isEdit = false, benData = null) => { 
+            document.getElementById('benForm').reset(); 
+            document.getElementById('benModalTitle').innerText = isEdit ? "Editar Derechohabiente" : "Nuevo Derechohabiente"; 
+            document.getElementById('btnSaveBen').innerText = isEdit ? "Actualizar Expediente" : "Crear Expediente"; 
+            
+            if(isEdit && benData) { 
+                document.getElementById('benId').value = benData.id; 
+                document.getElementById('benId').disabled = true; 
+                document.getElementById('benName').value = benData.name; 
+                document.getElementById('benPhone').value = benData.phone || ''; 
+                document.getElementById('benMuni').value = benData.municipality || ''; 
+                document.getElementById('benAddr').value = benData.address || ''; 
+                document.getElementById('benFamName').value = benData.family?.name || ''; 
+                document.getElementById('benFamPhone').value = benData.family?.phone || ''; 
+                
+                // Cargar Tipo de Afiliado (Corrección: Selección Programática)
+                const typeSelect = document.getElementById('benType');
+                const savedType = benData.type || 'Afiliado Directo';
+                let found = false;
+                for(let opt of typeSelect.options) {
+                    if(opt.value === savedType) { opt.selected = true; found = true; break; }
+                }
+                if(!found) {
+                    for(let opt of typeSelect.options) {
+                        if(opt.value.toLowerCase() === savedType.toLowerCase()) { opt.selected = true; break; }
+                    }
+                }
+
+                document.getElementById('benLastDispense').value = benData.lastDispense || ''; 
+                document.getElementById('benNextShipment').value = benData.nextShipment || ''; 
+                document.getElementById('benPickup').checked = benData.pickupCounter || false; 
+                
+                window.toggleCCAssign(); 
+                loadAssignableLists(benData.assignedPharma?.uid, benData.assignedCC?.uid); 
+            } else { 
+                document.getElementById('benId').disabled = false; 
+                window.toggleCCAssign(); 
+                loadAssignableLists(); 
+            } 
+            document.getElementById('benModal').classList.remove('hidden'); 
+        };
+        window.editBeneficiary = (s) => window.openBeneficiaryModal(true, JSON.parse(decodeURIComponent(s)));
+        window.saveBeneficiary = async () => { const id = document.getElementById('benId').value; const name = document.getElementById('benName').value; const nextDate = document.getElementById('benNextShipment').value; const isPickup = document.getElementById('benPickup').checked; if(!id || !name) return alert("Faltan datos."); const valP = document.getElementById('benAssignPharma').value; const valC = document.getElementById('benAssignCC').value; let ph = { uid: "", name: "Sin asignar" }; let cc = { uid: "", name: "Sin asignar" }; if(valP) { const [u,n]=valP.split("|"); ph={uid:u, name:n}; } if(!isPickup && valC) { const [u,n]=valC.split("|"); cc={uid:u, name:n}; } else if(isPickup) cc={uid:"ventanilla", name:"VENTANILLA"}; try{ await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'beneficiaries', id), { id, name, phone: document.getElementById('benPhone').value, address: document.getElementById('benAddr').value, municipality: document.getElementById('benMuni').value, family: { name: document.getElementById('benFamName').value, phone: document.getElementById('benFamPhone').value }, type: document.getElementById('benType').value, pickupCounter: isPickup, assignedPharma: ph, assignedCC: cc, nextShipment: nextDate, updatedAt: new Date().toISOString() }, {merge:true}); if(nextDate) { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shipments', `${id}_${nextDate}`), { date: nextDate, beneficiaryId: id, beneficiaryName: name, status: 'Nuevo', assignedPharma: ph, assignedCC: cc, pickupCounter: isPickup, createdAt: new Date().toISOString() }); } alert("Guardado."); document.getElementById('benModal').classList.add('hidden'); } catch(e) { alert("Error."); } };
+        window.handleCSVUpload = async (input) => { 
+            const file = input.files[0]; if(!file) return;
+            const modal = document.getElementById('csvProgressModal');
+            const bar = document.getElementById('uploadBar');
+            const text = document.getElementById('uploadStatus');
+            const count = document.getElementById('uploadCount');
+            
+            modal.classList.remove('hidden');
+            text.innerText = "Analizando archivo...";
+            
+            // Función Helper para obtener columnas
+            const getColValue = (row, possibleNames) => {
+                const keys = Object.keys(row);
+                for (const name of possibleNames) {
+                    const foundKey = keys.find(k => k.trim().toUpperCase() === name.toUpperCase());
+                    if (foundKey) return row[foundKey];
+                }
+                return null;
+            };
+
+            // Función de procesamiento común para CSV y Excel
+            const processData = async (data) => {
+                const total = data.length;
+                let processed = 0;
+                const chunkSize = 300; // Batch Seguro
+
+                if (total === 0) {
+                    alert("El archivo parece vacío o no se pudo leer.");
+                    modal.classList.add('hidden');
+                    return;
+                }
+
+                // Pre-cargar agentes
+                const qAgents = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'users_directory'));
+                const pharmas = [], ccs = [];
+                
+                qAgents.forEach(d => { 
+                    const u = d.data(); 
+                    if (
+                      isEligiblePharma(u)
+                    ) {
+                      pharmas.push({ uid: u.uid, name: u.name });
+                    }
+                    
+                    if (
+                      isEligibleCC(u)
+                    ) {
+                      ccs.push({ uid: u.uid, name: u.name });
+                    }
+                });
+
+                for (let i = 0; i < total; i += chunkSize) {
+                    const chunk = data.slice(i, i + chunkSize);
+                    const batch = writeBatch(db);
+                    
+                    chunk.forEach(row => {
+                        const id = getColValue(row, ['DNI', 'ID', 'IDENTIDAD', 'CÉDULA']);
+                        const name = getColValue(row, ['NOMBRE', 'PACIENTE', 'NAME']);
+                        if(!id) return; // Saltar filas vacías
+
+                        // Datos Opcionales
+                        const phone = getColValue(row, ['TELEFONO', 'TEL']) || "";
+                        const addr = getColValue(row, ['DIRECCION', 'DIR', 'DOMICILIO']) || "";
+                        const famName = getColValue(row, ['FAMILIAR', 'CONTACTO']) || "";
+                        const famPhone = getColValue(row, ['TELEFONO_FAMILIAR', 'TEL_FAMILIAR']) || "";
+                        const muni = getColValue(row, ['DESCRIPCION_MUNICIPIO', 'MUNICIPIO']) || "";
+                        const type = getColValue(row, ['TIPOAFILIADO', 'TIPO_AFILIADO', 'TIPO', 'AFILIACION', 'TIPO AFILIADO']) || "Afiliado Directo";
+
+                        // Asignación Automática de Carga
+                        let aPharma = { uid: "", name: "Sin asignar" };
+                        let aCC = { uid: "", name: "Sin asignar" };
+                        
+                        const nextPharma = pickRoundRobin('pharma', pharmas);
+                        if (nextPharma) {
+                            aPharma = { uid: nextPharma.uid, name: nextPharma.name };
+                        }
+
+                        const nextCC = pickRoundRobin('cc', ccs);
+                        if (nextCC) {
+                            aCC = { uid: nextCC.uid, name: nextCC.name };
+                        }
+
+                        const benData = { 
+                            id: id.toString().trim(), 
+                            name: name.toString().trim(), 
+                            phone: phone.toString(), 
+                            address: addr.toString(), 
+                            municipality: muni.toString(), 
+                            family: { name: famName.toString(), phone: famPhone.toString() }, 
+                            type: type.toString(), 
+                            assignedPharma: aPharma, 
+                            assignedCC: aCC, 
+                            updatedAt: new Date().toISOString(), 
+                            status: 'Activo' 
+                        };
+                        
+                        batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'beneficiaries', id.toString().trim()), benData, { merge: true });
+                    });
+                    
+                    try {
+                        await batch.commit();
+                        processed += chunk.length;
+                        const pct = Math.min(Math.round((processed/total)*100), 100);
+                        
+                        // Actualización Visual
+                        bar.style.width = pct + "%";
+                        count.innerText = pct + "%";
+                        text.innerText = `Sincronizando ${processed}/${total}`;
+                        
+                        await new Promise(r => setTimeout(r, 50));
+                    } catch (e) {
+                        console.error("Error batch:", e);
+                        alert("Error de conexión. Intente nuevamente.");
+                        break;
+                    }
+                }
+                
+                setTimeout(() => { 
+                    modal.classList.add('hidden'); 
+                    alert(`✅ Proceso completado. ${processed} registros procesados.`); 
+                    input.value = ''; 
+                }, 500);
+            };
+
+            if (file.name.endsWith('.csv')) {
+                Papa.parse(file, { 
+                    header: true, 
+                    skipEmptyLines: true, 
+                    complete: async (res) => {
+                        try { await processData(res.data); } 
+                        catch (e) { console.error("ERROR CARGA:", e); alert("Error en carga: " + e.message); modal.classList.add('hidden'); input.value = ""; }
+                    } 
+                });
+            } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                        await processData(jsonData);
+                    } catch (e) {
+                        console.error("ERROR CARGA:", e);
+                        alert("Error en carga: " + e.message);
+                        modal.classList.add('hidden');
+                        input.value = "";
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                alert("Formato no soportado. Use CSV o Excel (.xlsx).");
+                modal.classList.add('hidden');
+                input.value = "";
+            }
+        };
+        
+        window.balanceWorkload = async () => {
+            if(!confirm("¿Reasignar cargas de trabajo equitativamente a todos los pacientes activos?")) return;
+
+            // 1. Get Agents
+            const qAgents = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'users_directory'));
+            const pharmas = [], ccs = [];
+            qAgents.forEach(d => {
+                const u = d.data();
+                if (isEligiblePharma(u)) {
+                    pharmas.push({ uid: u.uid, name: u.name });
+                }
+                if (isEligibleCC(u)) {
+                    ccs.push({ uid: u.uid, name: u.name });
+                }
+            });
+
+            if(pharmas.length === 0 && ccs.length === 0) return alert("No hay agentes disponibles.");
+
+            // 2. Get Beneficiaries
+            // Ideally processing in batches if too many, but for now getting all active ones.
+            const qBen = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'beneficiaries'));
+            const batch = writeBatch(db);
+            let count = 0;
+
+            qBen.forEach(docSnap => {
+                const ben = docSnap.data();
+                const benRef = doc(db, 'artifacts', appId, 'public', 'data', 'beneficiaries', docSnap.id);
+                let updates = {};
+
+                // Reassign Pharma
+                const nextPharma = pickRoundRobin('pharma', pharmas);
+                if (nextPharma) updates.assignedPharma = { uid: nextPharma.uid, name: nextPharma.name };
+
+                // Reassign CC (only if not pickup)
+                if (!ben.pickupCounter) {
+                     const nextCC = pickRoundRobin('cc', ccs);
+                     if (nextCC) updates.assignedCC = { uid: nextCC.uid, name: nextCC.name };
+                }
+
+                if(Object.keys(updates).length > 0) {
+                    batch.update(benRef, updates);
+                    count++;
+                }
+            });
+
+            await batch.commit();
+            alert(`Cargas equilibradas para ${count} pacientes.`);
+        };
+
+        onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'beneficiaries'), (s) => { const l = document.getElementById('ben-list'); if(!l) return; l.innerHTML = ''; s.forEach(d => { const b=d.data(); const j = encodeURIComponent(JSON.stringify(b)); l.innerHTML += `<tr class="hover:bg-slate-50 border-b"><td class="p-4 pl-6 font-bold">${b.name}<br><span class="text-[10px] text-slate-400 font-mono">${b.id}</span></td><td class="p-4 text-xs font-medium text-slate-600"><i class="fa-solid fa-map-pin text-brand-cyan mr-1"></i>${b.municipality || 'Sin Registro'}</td><td class="p-4 text-xs font-bold text-center ${b.pickupCounter?'text-orange-600':'text-emerald-600'}">${b.pickupCounter?'Ventanilla':'Domicilio'}</td><td class="p-4 text-[10px] font-bold text-slate-400">P: ${b.assignedPharma?.name||'?'}<br>CC: ${b.assignedCC?.name||'?'}</td><td class="p-4 text-right"><div class="flex justify-end gap-2"><button onclick="openHistory('${b.id}','${b.name}')" class="text-slate-400 hover:text-blue-500"><i class="fa-solid fa-history"></i></button><button onclick="window.openGeoAssign('${b.id}', '${b.name}')" class="text-orange-500 hover:text-orange-700" title="Mapa"><i class="fa-solid fa-map-location-dot"></i></button><button onclick="editBeneficiary('${j}')" class="text-blue-600 hover:text-blue-800"><i class="fa-solid fa-pen"></i></button></div></td></tr>`; }); });
+
+        /* --- BLOQUE: LOGÍSTICA --- */
+        window.openYear = (y) => { currentYear=y; document.getElementById('ship-years').classList.add('hidden'); document.getElementById('ship-months').classList.remove('hidden'); const c = document.getElementById('ship-months'); c.innerHTML = ''; monthNames.forEach((m, i) => { c.innerHTML += `<div onclick="openMonth(${i})" class="bg-white p-6 rounded-2xl shadow-sm border hover:border-brand-cyan cursor-pointer text-center font-bold text-slate-700 transition-all">${m}</div>`; }); window.updateBreadcrumb(); };
+        window.openMonth = (m) => { currentMonth=m; document.getElementById('ship-months').classList.add('hidden'); document.getElementById('ship-days').classList.remove('hidden'); window.renderCalendar(currentYear, currentMonth); window.updateBreadcrumb(); };
+        window.renderCalendar = (y, m) => { const g = document.getElementById('calendar-grid'); g.innerHTML = ''; const dim = new Date(y, m + 1, 0).getDate(); const fd = new Date(y, m, 1).getDay(); for(let i = 0; i < fd; i++) g.innerHTML += `<div></div>`; for(let d = 1; d <= dim; d++) { const ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`; g.innerHTML += `<div onclick="openDayView('${ds}')" class="calendar-day bg-white border border-slate-100 rounded-xl p-2 relative cursor-pointer hover:shadow-md"><span class="text-sm font-bold text-slate-700">${d}</span><div id="ship-count-${ds}" class="mt-1"></div></div>`; window.loadDayStats(ds); } };
+        window.loadDayStats = async function(ds) { const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'shipments'), where('date', '==', ds)); const s = await getDocs(q); if(!s.empty) { const el = document.getElementById(`ship-count-${ds}`); if(el) el.innerHTML = `<span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 rounded font-bold">${s.size} Envíos</span>`; } };
+        window.openDayView = async (dateStr) => { selectedDate = dateStr; document.getElementById('dayModalDate').innerText = dateStr; const lr = document.getElementById('content-route'), lp = document.getElementById('content-pickup'); lr.innerHTML = '...'; lp.innerHTML = '...'; document.getElementById('dayModal').classList.remove('hidden'); window.switchDayTab('route'); const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'shipments'), where('date', '==', dateStr)); const snap = await getDocs(q); lr.innerHTML = ''; lp.innerHTML = ''; snap.forEach(d => { const s = d.data(); const isP = s.pickupCounter || s.assignedCC?.uid === 'ventanilla'; const h = window.renderTimelineItem(s); if(isP) lp.innerHTML += h; else lr.innerHTML += h; }); };
+        window.openNewShipmentModal = () => { document.getElementById('shipDate').value = selectedDate; document.getElementById('shipDateDisplay').innerText = selectedDate; const select = document.getElementById('shipBeneficiary'); select.innerHTML = '<option>Cargando...</option>'; getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'beneficiaries')).then(snap => { select.innerHTML = '<option value="">Seleccione Beneficiario...</option>'; snap.forEach(d => { select.innerHTML += `<option value="${d.id}|${d.data().name}">${d.data().name} (${d.id})</option>`; }); }); document.getElementById('shipmentModal').classList.remove('hidden'); };
+        window.saveShipment=async()=>{ const d=document.getElementById('shipDate').value, b=document.getElementById('shipBeneficiary').value, g=document.getElementById('shipGuide').value, st=document.getElementById('shipStatus').value; if(!b || !g){alert("Datos incompletos");return;} const [bid,bn]=b.split('|'); try{ await addDoc(collection(db,'artifacts',appId,'public','data','shipments'),{date:d,beneficiaryId:bid,beneficiaryName:bn,guideNumber:g,status:st,createdAt:new Date().toISOString()}); alert("Guía guardada."); document.getElementById('shipmentModal').classList.add('hidden'); openDayView(d); loadDayStats(d); }catch(e){alert(e.message);} };
+        
+        window.updateBreadcrumb = () => { const b = document.getElementById('ship-breadcrumb'); let h = `<span class="cursor-pointer hover:underline" onclick="resetShipView()">Inicio</span>`; if (currentYear) h += ` > <span class="cursor-pointer hover:underline" onclick="openYear(${currentYear})">${currentYear}</span>`; if (currentMonth !== null) h += ` > <span>${monthNames[currentMonth]}</span>`; b.innerHTML = h; };
+        window.resetShipView = () => { currentYear = null; currentMonth = null; document.getElementById('ship-days').classList.add('hidden'); document.getElementById('ship-months').classList.add('hidden'); document.getElementById('ship-years').classList.remove('hidden'); window.updateBreadcrumb(); };
+        window.switchDayTab = (t) => { const br=document.getElementById('tab-route'), bp=document.getElementById('tab-pickup'), cr=document.getElementById('content-route'), cp=document.getElementById('content-pickup'); if(t==='route'){ br.classList.add('active'); bp.classList.remove('active'); cr.classList.remove('hidden'); cp.classList.add('hidden'); } else { bp.classList.add('active'); br.classList.remove('active'); cp.classList.remove('hidden'); cr.classList.add('hidden'); } };
+        window.downloadDayReport = async () => { 
+            const d = document.getElementById('dayModalDate').innerText; const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'shipments'), where('date', '==', d)); const s = await getDocs(q); 
+            
+            // Opción Excel vs CSV
+            if(confirm("¿Descargar como Excel (.xlsx)?\nCancelar para CSV.")) {
+                const data = [];
+                s.forEach(docSnap => {
+                    const x = docSnap.data();
+                    data.push({
+                        Fecha: x.date, Guia: x.guideNumber, Paciente: x.beneficiaryName, ID: x.beneficiaryId,
+                        Estado: x.status, Tipo: (x.pickupCounter?'Ventanilla':'Ruta'), 
+                        Farmacia: x.assignedPharma?.name, CallCenter: x.assignedCC?.name
+                    });
+                });
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Reporte");
+                XLSX.writeFile(wb, `Reporte_${d}.xlsx`);
+            } else {
+                let csv = "\uFEFFFecha;Guia;Paciente;ID;Estado;Tipo;Farmacia;CallCenter\n"; 
+                s.forEach(docSnap => { const x = docSnap.data(); const type = (x.pickupCounter || x.assignedCC?.uid === 'ventanilla') ? "Ventanilla" : "Ruta"; csv += `${x.date};${x.guideNumber||'PEND'};${x.beneficiaryName};${x.beneficiaryId};${x.status};${type};${x.assignedPharma?.name};${x.assignedCC?.name}\n`; }); 
+                const link = document.createElement("a"); link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv); link.setAttribute("download", `Reporte_${d}.csv`); link.click();
+            }
+        };
+        window.openHistory = async function(id, name) { const list = document.getElementById('hist-list'); list.innerHTML = '<p class="p-4">Cargando...</p>'; document.getElementById('historyModal').classList.remove('hidden'); const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'shipments'), where('beneficiaryId', '==', id)); const snap = await getDocs(q); let h = ''; snap.forEach(d => { const s = d.data(); h += `<tr class="border-b"><td class="p-3">${s.date}</td><td class="p-3 font-mono text-[10px]">${s.guideNumber||'---'}</td><td class="p-3"><span class="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold">${s.status}</span></td><td class="p-3 text-right text-[10px] text-slate-400">${new Date(s.createdAt).toLocaleDateString()}</td></tr>`; }); list.innerHTML = h || '<tr><td colspan="4" class="p-4 text-center">Sin historial disponible.</td></tr>'; };
+        
+        window.runAIScheduler = async () => { if(!confirm("¿Planificar envíos?")) return; const q = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'beneficiaries')); const batch = writeBatch(db); let count = 0; q.forEach(d => { const b = d.data(); if(b.lastDispense) { const next = new Date(b.lastDispense); next.setDate(next.getDate() + 30); const ds = next.toISOString().split('T')[0]; batch.set(doc(db, 'artifacts', appId, 'public', 'data', 'shipments', `${b.id}_${ds}`), { date: ds, beneficiaryId: b.id, beneficiaryName: b.name, status: 'Nuevo', assignedPharma: b.assignedPharma, assignedCC: b.assignedCC, pickupCounter: b.pickupCounter, createdAt: new Date().toISOString(), isAutoGenerated: true }); count++; } }); await batch.commit(); alert(`IA: ${count} envíos planificados.`); };
+        
+        /* --- GESTIÓN GEOGRÁFICA (NUEVO BLOQUE) --- */
+        window.openGeoAssign = (id, name) => {
+            document.getElementById('geoAssignBenId').value = id;
+            document.getElementById('geoAssignBenName').innerText = name;
+            const select = document.getElementById('geoAssignSelect');
+            select.innerHTML = '<option disabled selected>Cargando...</option>';
+            document.getElementById('geoAssignModal').classList.remove('hidden');
+            
+            getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'geographic_areas')).then(snap => {
+                select.innerHTML = '<option value="" disabled selected>Seleccione Zona...</option>';
+                snap.forEach(d => {
+                    const area = d.data();
+                    select.innerHTML += `<option value="${d.id}">${area.name}</option>`;
+                });
+            });
+        };
+
+        window.saveGeoAssignment = async () => {
+            const benId = document.getElementById('geoAssignBenId').value;
+            const areaId = document.getElementById('geoAssignSelect').value;
+            if(!areaId) return alert("Seleccione una zona.");
+            
+            try {
+                // Actualizar beneficiario
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'beneficiaries', benId), { geoAreaId: areaId });
+                alert("Zona asignada correctamente.");
+                document.getElementById('geoAssignModal').classList.add('hidden');
+            } catch(e) { alert("Error: " + e.message); }
+        };
+
+        window.createGeoArea = async () => {
+            const name = prompt("Nombre de la Nueva Zona (ej: San Pedro Sula):");
+            if(name) {
+                try {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'geographic_areas'), { name, createdAt: new Date().toISOString() });
+                    alert("Zona creada.");
+                    // Recargar vista si estamos ahí (simple reload por ahora)
+                    if(!document.getElementById('view-geographic').classList.contains('hidden-view')) loadGeographicView();
+                } catch(e) { alert("Error: " + e.message); }
+            }
+        };
+
+        // Función para cargar la vista geográfica
+        async function loadGeographicView() {
+            const grid = document.getElementById('geo-grid');
+            grid.innerHTML = '<p class="text-slate-400">Cargando mapa...</p>';
+            
+            const areasSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'geographic_areas'));
+            grid.innerHTML = '';
+            
+            areasSnap.forEach(async (areaDoc) => {
+                const area = areaDoc.data();
+                // Contar pacientes en esta zona
+                const qBen = query(collection(db, 'artifacts', appId, 'public', 'data', 'beneficiaries'), where('geoAreaId', '==', areaDoc.id));
+                const benSnap = await getDocs(qBen);
+                const count = benSnap.size;
+
+                grid.innerHTML += `
+                    <div class="geo-card bg-white p-6 rounded-3xl border border-slate-100 shadow-sm cursor-pointer hover:shadow-md transition-all relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 bg-brand-cyan text-white text-xs font-bold px-3 py-1 rounded-bl-xl">${count} Pacientes</div>
+                        <div class="w-12 h-12 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center text-xl mb-4 group-hover:scale-110 transition-transform"><i class="fa-solid fa-map-location"></i></div>
+                        <h3 class="font-bold text-slate-700 text-lg">${area.name}</h3>
+                        <p class="text-xs text-slate-400 mt-1">Zona de Cobertura</p>
+                    </div>
+                `;
+            });
+        }
+
+        // Hook para cargar geografía al cambiar vista
+        const originalSwitchView = window.switchView;
+        window.switchView = (viewId) => {
+            originalSwitchView(viewId);
+            if(viewId === 'geographic') loadGeographicView();
+        };
+
+        /* --- STARTUP --- */
+        onAuthStateChanged(auth, async (u) => { if(u){ checkSession(u); resetInactivityTimer(); } else showLockScreen("Inicie sesión."); });
+        function showLockScreen(m) { document.getElementById('lock-msg').innerText = m; document.getElementById('auth-lock').classList.remove('hidden'); }
+        
+        // Inicializar vista
+        window.switchView('dashboard');
+    </script>
+</body>
+</html>

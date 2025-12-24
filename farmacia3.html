@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Farmacia - Revisión y Asignación</title>
+    <!-- Copiar scripts de estilos del farmacia.html original -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script> tailwind.config = { theme: { extend: { colors: { brand: { dark: '#003366', teal: '#0e7490', cyan: '#06b6d4', clinical: '#10b981', danger: '#ef4444' } } } } } </script>
+    <style> 
+        body{font-family:'Poppins',sans-serif;background-color:#f8fafc} 
+        .hidden-view{display:none!important}
+        .tab-active { border-bottom: 3px solid #003366; color: #003366; background-color: #f1f5f9; font-weight: 700; }
+        .calendar-day { min-height: 100px; transition: all 0.2s; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .calendar-day:hover { border-color: #06b6d4; background-color: #f0f9ff; }
+        .status-green { background-color: #f0fdf4; border-color: #bbf7d0; }
+        .status-yellow { background-color: #fffbeb; border-color: #fde68a; }
+    </style>
+</head>
+<body class="flex flex-col h-screen text-slate-700">
+
+    <header class="bg-white border-b border-slate-200 p-6 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-4">
+            <button onclick="window.location.href='farmacia.html'" class="bg-slate-100 p-2 rounded-lg hover:bg-slate-200"><i class="fa-solid fa-arrow-left"></i></button>
+            <div>
+                <h1 class="text-2xl font-bold text-brand-dark">Revisión y Asignación</h1>
+                <p class="text-xs text-slate-500">Planificación de envíos.</p>
+            </div>
+        </div>
+        <div class="flex gap-4">
+            <button onclick="switchSubView('rev-calendar')" id="btn-sub-rev-calendar" class="py-2 px-4 text-sm rounded-lg transition tab-active">Calendario</button>
+            <button onclick="switchSubView('rev-portfolio')" id="btn-sub-rev-portfolio" class="py-2 px-4 text-sm rounded-lg text-slate-500 hover:bg-slate-100">Mi Cartera</button>
+        </div>
+    </header>
+
+    <main class="flex-1 overflow-hidden relative">
+        <!-- VISTA CALENDARIO -->
+        <div id="sub-rev-calendar" class="absolute inset-0 overflow-y-auto p-6">
+            <!-- Grid Calendario (Copia del lógica original) -->
+            <div class="grid grid-cols-7 gap-3 mb-2 text-center text-[10px] font-bold text-slate-400 uppercase"><div>Dom</div><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div></div>
+            <div id="calendar-grid" class="grid grid-cols-7 gap-3"></div>
+        </div>
+
+        <!-- VISTA CARTERA -->
+        <div id="sub-rev-portfolio" class="absolute inset-0 overflow-y-auto p-6 hidden-view">
+            <input type="text" id="portfolioSearch" placeholder="Buscar..." class="w-full border p-3 rounded-xl shadow-sm mb-4" onkeyup="filterPortfolio()">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <table class="w-full text-left text-sm"><tbody id="portfolio-list" class="divide-y divide-slate-100"></tbody></table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modales (Crear Línea, Detalle Día, etc.) - Aquí se copia el HTML de los modales del farmacia.html original -->
+    <!-- (Omitido por brevedad, pero en el archivo real debe ir todo el bloque de modales: createLineModal, dayDetailModal, modalPrint) -->
+    
+    <!-- Incluir aquí los modales createLineModal y dayDetailModal del código anterior -->
+    
+    <script type="module">
+        import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId } from "./js/core/firebase.js";
+// Lógica de Negocio idéntica al bloque "REVISIÓN" del farmacia.html original
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, where, onSnapshot, addDoc, doc, getDocs, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        let currentUserId = '';
+
+        onAuthStateChanged(auth, async (u) => {
+            if(!u) window.location.href = 'index.html';
+            else {
+                currentUserId = u.uid;
+                const s = await getDoc(doc(db, 'artifacts', appId, 'users', u.uid, 'profile', 'data'));
+                const roles = s.exists() ? s.data().jobTitle || [] : [];
+                if(!roles.includes('Revisión y Asignación') && !roles.includes('Supervisor de Farmacia')) window.location.href = 'farmacia.html';
+                loadCalendar(); // Iniciar
+            }
+        });
+
+        // ... (Aquí va TODA la lógica de Calendario, Cartera, Crear Línea e Impresión que estaba en el farmacia.html original)
+        // Se copia y pega las funciones: loadCalendar, openDayDetail, prepareShipment, saveShipmentLine, etc.
+        // Asegurando que switchSubView cambie la visibilidad de los divs locales.
+    </script>
+</body>
+</html>

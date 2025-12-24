@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Farmacia - Inventario</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body{font-family:'Poppins',sans-serif;background-color:#f8fafc}
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden text-slate-700">
+    <header class="bg-white border-b border-slate-200 p-6 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-4">
+            <button onclick="window.location.href='farmacia.html'" class="bg-slate-100 p-2 rounded-lg hover:bg-slate-200"><i class="fa-solid fa-arrow-left"></i></button>
+            <h1 class="text-2xl font-bold text-[#003366]">Gestión de Inventario</h1>
+        </div>
+        <button onclick="openAddGroupModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg"><i class="fa-solid fa-layer-group mr-2"></i> Nuevo Grupo</button>
+    </header>
+    
+    <main class="flex-1 overflow-y-auto p-8 custom-scroll">
+        <div id="inventory-container" class="space-y-6 max-w-5xl mx-auto"></div>
+    </main>
+
+    <!-- Modal Grupo -->
+    <div id="groupModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h3 class="font-bold text-lg mb-4">Nuevo Grupo</h3>
+            <input id="newGroupName" class="w-full border p-2 rounded-lg mb-4 outline-none focus:border-purple-500" placeholder="Ej: Crónicos, Refrigerados...">
+            <div class="flex justify-end gap-2">
+                <button onclick="document.getElementById('groupModal').classList.add('hidden')" class="text-slate-500 text-sm font-bold px-4 py-2">Cancelar</button>
+                <button onclick="saveGroup()" class="bg-purple-600 text-white text-sm font-bold px-4 py-2 rounded-lg">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId } from "./js/core/firebase.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, where, onSnapshot, addDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        onAuthStateChanged(auth, async (u) => {
+            if(!u) window.location.href = 'index.html';
+            else {
+                const s = await getDoc(doc(db, 'artifacts', appId, 'users', u.uid, 'profile', 'data'));
+                const roles = s.exists() ? s.data().jobTitle || [] : [];
+                if(!roles.includes('Gestión de Inventario') && !roles.includes('Supervisor de Farmacia')) window.location.href = 'farmacia.html';
+                loadInventory();
+            }
+        });
+
+        function loadInventory() {
+            const container = document.getElementById('inventory-container');
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'inventory_groups'), (snap) => {
+                container.innerHTML = '';
+                snap.forEach(gDoc => {
+                    const group = gDoc.data();
+                    const groupId = gDoc.id;
+                    const groupHtml = document.createElement('div');
+                    groupHtml.className = "bg-white p-5 rounded-3xl border border-slate-200 shadow-sm";
+                    groupHtml.innerHTML = `<div class="flex justify-between items-center mb-4 pb-2 border-b border-slate-50"><h3 class="font-bold text-[#003366] text-lg">${group.name}</h3><button onclick="window.addMedication('${groupId}')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition font-bold"><i class="fa-solid fa-plus mr-1"></i> Agregar Med</button></div><div id="list-${groupId}" class="space-y-2"></div>`;
+                    container.appendChild(groupHtml);
+
+                    const qMeds = query(collection(db, 'artifacts', appId, 'public', 'data', 'inventory_items'), where('groupId', '==', groupId));
+                    onSnapshot(qMeds, (mSnap) => {
+                        const list = document.getElementById(`list-${groupId}`); list.innerHTML = '';
+                        mSnap.forEach(mDoc => {
+                            const med = mDoc.data();
+                            list.innerHTML += `<div class="flex justify-between items-center p-2 hover:bg-slate-50 rounded-lg transition"><span class="text-sm text-slate-700">${med.name}</span><span class="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200">Stock: ${med.stock || 0}</span></div>`;
+                        });
+                        if(mSnap.empty) list.innerHTML = '<p class="text-xs text-slate-300 italic">Sin medicamentos.</p>';
+                    });
+                });
+            });
+        }
+        
+        window.openAddGroupModal = () => document.getElementById('groupModal').classList.remove('hidden');
+        window.saveGroup = async () => { const name = document.getElementById('newGroupName').value; if(name) { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'inventory_groups'), { name }); document.getElementById('groupModal').classList.add('hidden'); } };
+        window.addMedication = async (groupId) => { const name = prompt("Nombre del Medicamento:"); if(name) { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'inventory_items'), { name, groupId, stock: 100 }); } };
+    </script>
+</body>
+</html>
