@@ -84,6 +84,8 @@
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { doc, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { ensureEmergencyAdmin } from "./js/core/emergencyAdmin.js";
+import { isWithinSchedule } from "./js/core/utils.js";
+import { showBlockScreen } from "./js/core/blockScreen.js";
 
 // Init del admin de emergencia se ejecuta después de inicializar el indicador de conexión.
 // 1. GENERAR HUELLA DE DISPOSITIVO ÚNICA
@@ -232,6 +234,20 @@ let deviceId = getDeviceId();
                 const requireIpApproval = pendingUserData.requireIpApproval === true;
 
                 if (pendingUserData.role === 'admin' || !requireIpApproval || authorizedDevices.includes(deviceId)) {
+                    // Horario/Días: Admin siempre entra, otros deben respetar horario
+                    if (pendingUserData.role !== 'admin' && !isWithinSchedule(pendingUserData)) {
+                        // Mostrar bloqueo (sin cerrar sesión automática); botón vuelve al login.
+                        showBlockScreen({
+                            title: "Horario no autorizado",
+                            message: "Aún no es tu hora autorizada para ingresar. Vuelve dentro del horario asignado por el administrador.",
+                            reason: "OUT_OF_SCHEDULE",
+                            redirectTo: "index.html",
+                            signOutOnClick: true
+                        });
+                        // Detener el flujo de login aquí.
+                        toggleLoading(false);
+                        return;
+                    }
                     finalizeLogin(user, pendingUserData.role);
                 } else {
                     document.getElementById('login-card').classList.add('hidden');
