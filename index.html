@@ -51,6 +51,7 @@
             </div>
             
             <div id="error-msg" class="text-red-500 text-xs text-center hidden bg-red-50 p-2 rounded font-bold border border-red-100"></div>
+            <div id="bootstrap-msg" class="text-orange-700 text-xs text-center hidden bg-orange-50 p-2 rounded font-bold border border-orange-100"></div>
             
             <button type="submit" id="btn-login" class="w-full bg-[#0056b3] text-white font-bold py-3.5 rounded-xl hover:bg-blue-800 transition shadow-lg transform active:scale-95 flex justify-center items-center text-sm md:text-base disabled:opacity-50 disabled:cursor-not-allowed">
                 <span id="btn-text">INGRESAR</span> 
@@ -84,36 +85,79 @@ import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https:/
 import { doc, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { ensureEmergencyAdmin } from "./js/core/emergencyAdmin.js";
 
-// Intentar crear/asegurar admin de emergencia (idempotente).
-// ⚠️ CAMBIAR admin2025 en producción.
-ensureEmergencyAdmin().catch(() => {});
-
+// Init del admin de emergencia se ejecuta después de inicializar el indicador de conexión.
 // 1. GENERAR HUELLA DE DISPOSITIVO ÚNICA
 let deviceId = getDeviceId();
-
-// 1. GENERAR HUELLA DE DISPOSITIVO ÚNICA
-        let deviceId = localStorage.getItem('mediflow_device_id');
-        if (!deviceId) {
-            deviceId = crypto.randomUUID(); 
-            localStorage.setItem('mediflow_device_id', deviceId);
-        }
-
         let pendingUser = null;
         let pendingUserData = null;
 
-        // Status Logic
+        // Status Logic (WEB + Firebase)
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
-        function updateStatus(online) {
-            statusDot.className = online ? "w-3 h-3 rounded-full bg-green-500 shadow-md" : "w-3 h-3 rounded-full bg-red-500 animate-pulse";
-            statusText.className = online ? "text-xs font-bold text-green-700 uppercase" : "text-xs font-bold text-red-700 uppercase";
-            statusText.innerText = online ? "Conectado" : "Sin Conexión";
-        }
-        window.addEventListener('online', () => updateStatus(true));
-        window.addEventListener('offline', () => updateStatus(false));
-        updateStatus(navigator.onLine);
 
-        // Safe Navigation Wrapper
+        // null = desconocido (cargando), true = ok, false = error/bloqueado
+        let firebaseOk = null;
+
+        function refreshStatus() {
+            const webOnline = navigator.onLine === true;
+
+            if (!webOnline) {
+                statusDot.className = "w-3 h-3 rounded-full bg-red-500 animate-pulse";
+                statusText.className = "text-xs font-bold text-red-700 uppercase";
+                statusText.innerText = "Sin Conexión";
+                return;
+            }
+
+            if (firebaseOk === false) {
+                statusDot.className = "w-3 h-3 rounded-full bg-orange-500 animate-pulse";
+                statusText.className = "text-xs font-bold text-orange-700 uppercase";
+                statusText.innerText = "Revisar Firebase";
+                return;
+            }
+
+            if (firebaseOk === true) {
+                statusDot.className = "w-3 h-3 rounded-full bg-green-500 shadow-md";
+                statusText.className = "text-xs font-bold text-green-700 uppercase";
+                statusText.innerText = "Conectado";
+                return;
+            }
+
+            // Cargando / desconocido
+            statusDot.className = "w-3 h-3 rounded-full bg-gray-400 animate-pulse";
+            statusText.className = "text-xs font-semibold text-gray-500 uppercase";
+            statusText.innerText = "Cargando...";
+        }
+
+        window.addEventListener('online', refreshStatus);
+        window.addEventListener('offline', refreshStatus);
+        refreshStatus();
+
+        // Intentar crear/asegurar admin de emergencia (idempotente).
+        // ⚠️ CAMBIAR admin2025 en producción.
+        (async () => {
+            const bootMsg = document.getElementById('bootstrap-msg');
+            try {
+                const result = await ensureEmergencyAdmin();
+                firebaseOk = true;
+                // Mensaje informativo (solo visible si se creó por primera vez)
+                if (result?.createdAuth) {
+                    bootMsg.innerText = "Admin de emergencia creado: usuario 'admin' / clave 'admin2025'.";
+                    bootMsg.classList.remove('hidden');
+                } else {
+                    bootMsg.classList.add('hidden');
+                }
+                console.info("Emergency admin ensured:", result);
+            } catch (e) {
+                console.warn("ensureEmergencyAdmin falló:", e);
+                firebaseOk = false;
+                // Mostrar el error para que el usuario pueda corregirlo sin abrir consola
+                bootMsg.innerText = (e && e.message) ? e.message : "No se pudo crear/verificar el admin de emergencia.";
+                bootMsg.classList.remove('hidden');
+            } finally {
+                refreshStatus();
+            }
+        })();
+// Safe Navigation Wrapper
         function safeNavigate(targetUrl) {
             try {
                 // Intentar redirección estándar
@@ -152,7 +196,22 @@ let deviceId = getDeviceId();
                 pendingUser = userCredential.user;
                 await checkDeviceAuthorization(pendingUser);
             } catch (error) { 
-                resetUI("Usuario o contraseña incorrectos."); 
+                const code = error?.code || "";
+                if (code === "auth/operation-not-allowed") {
+                    resetUI("En Firebase Auth debes habilitar Email/Password.");
+                } else if (code === "auth/network-request-failed") {
+                    resetUI("No hay conexión con Firebase. Revisa internet / dominio autorizado.");
+                } else if (code === "auth/user-not-found") {
+                    resetUI("El usuario no existe.");
+                } else if (code === "auth/wrong-password") {
+                    resetUI("Contraseña incorrecta.");
+                } else if (code === "auth/invalid-email") {
+                    resetUI("Usuario inválido.");
+                } else if (code === "auth/invalid-credential") {
+                    resetUI("Credenciales inválidas.");
+                } else {
+                    resetUI("No se pudo iniciar sesión. Revisa usuario y contraseña.");
+                }
                 console.error(error);
             }
         });
@@ -163,7 +222,7 @@ let deviceId = getDeviceId();
                 const snap = await getDoc(userRef);
                 
                 if (!snap.exists()) {
-                    resetUI("Error: Perfil no encontrado.");
+                    resetUI("Perfil no encontrado en Firestore. Revisa Rules (BOOTSTRAP) y la creación del usuario.");
                     await signOut(auth);
                     return;
                 }
