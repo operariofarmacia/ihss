@@ -12,7 +12,8 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return signedIn() && profileDoc(request.auth.uid).data.role == "admin";
+      let p = profileDoc(request.auth.uid);
+      return signedIn() && p.exists() && p.data.role == "admin";
     }
 
     function sessionUpdateOnly() {

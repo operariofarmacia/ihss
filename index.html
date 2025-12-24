@@ -13,6 +13,11 @@
         .fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
+
+    <!-- Reduce caching issues on static hosts (GitHub Pages / Netlify) -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
 </head>
 <body class="bg-gradient-to-br from-[#003366] via-blue-700 to-cyan-600 min-h-screen flex items-center justify-center relative overflow-hidden px-4">
     
@@ -60,6 +65,8 @@
             </button>
         </form>
         <p id="loading-msg" class="text-blue-600 text-xs mt-4 hidden font-medium animate-pulse">Conectando...</p>
+
+        <p class="text-[10px] text-slate-400 mt-4">Build: <span id="build-version">2025.12.24-11</span></p>
     </div>
 
     <!-- MODAL DE VERIFICACIÓN DE DISPOSITIVO -->
@@ -79,19 +86,59 @@
         </div>
     </div>
 
+    <!-- Fallback para capturar errores cuando los módulos no cargan (GitHub Pages suele cachear JS) -->
+    <script>
+      (function () {
+        window.__IHSS_BOOT_OK__ = false;
+
+        function showFatal(msg) {
+          var box = document.getElementById('bootstrap-msg') || document.getElementById('error-msg');
+          if (!box) return;
+          box.textContent = msg;
+          box.classList.remove('hidden');
+        }
+
+        window.addEventListener('error', function (e) {
+          // Import errors & runtime errors
+          var m = (e && (e.message || (e.error && e.error.message))) || 'Error desconocido cargando scripts.';
+          showFatal('Error cargando el sistema: ' + m);
+        });
+
+        window.addEventListener('unhandledrejection', function (e) {
+          var m = (e && e.reason && (e.reason.message || e.reason.toString())) || 'Promesa rechazada.';
+          showFatal('Error interno: ' + m);
+        });
+
+        // Si en 5s el módulo no marcó boot OK, casi seguro es ruta 404 o caché
+        setTimeout(function () {
+          if (window.__IHSS_BOOT_OK__ !== true) {
+            showFatal(
+              "No se pudieron cargar los módulos JS. Revisa que exista /js/core/firebase.js en tu hosting (no 404) y haz Hard Refresh (Ctrl+F5)."
+            );
+          }
+        }, 5000);
+      })();
+    </script>
+
     <script type="module">
         import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId, authReady } from "./js/core/firebase.js";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { doc, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { ensureEmergencyAdmin } from "./js/core/emergencyAdmin.js";
-import { isWithinSchedule } from "./js/core/utils.js";
+import { doc, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";import { isWithinSchedule } from "./js/core/utils.js";
 import { showBlockScreen } from "./js/core/blockScreen.js";
 
-// Init del admin de emergencia se ejecuta después de inicializar el indicador de conexión.
+// Marcar que el módulo sí cargó (para el fallback de arriba)
+window.__IHSS_BOOT_OK__ = true;
+
 // 1. GENERAR HUELLA DE DISPOSITIVO ÚNICA
 let deviceId = getDeviceId();
-        // Asegura persistencia por pestaña
-        try { await authReady; } catch (e) {}
+
+        // Asegura persistencia por pestaña SIN bloquear la UI (si se cuelga, seguimos)
+        try {
+            await Promise.race([
+              authReady,
+              new Promise((resolve) => setTimeout(resolve, 1500))
+            ]);
+        } catch (e) {}
         let pendingUser = null;
         let pendingUserData = null;
 
@@ -136,26 +183,19 @@ let deviceId = getDeviceId();
         window.addEventListener('offline', refreshStatus);
         refreshStatus();
 
-        // Intentar crear/asegurar admin de emergencia (idempotente).
-        // ⚠️ CAMBIAR admin2025 en producción.
+        // Firebase readiness check (los usuarios ya existen; no creamos admin de emergencia aquí)
         (async () => {
             const bootMsg = document.getElementById('bootstrap-msg');
             try {
-                const result = await ensureEmergencyAdmin();
+                await Promise.race([
+                    authReady,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout inicializando Firebase. Revisa imports, reglas y dominio autorizado.")), 6000))
+                ]);
                 firebaseOk = true;
-                // Mensaje informativo (solo visible si se creó por primera vez)
-                if (result?.createdAuth) {
-                    bootMsg.innerText = "Admin de emergencia creado: usuario 'admin' / clave 'admin2025'.";
-                    bootMsg.classList.remove('hidden');
-                } else {
-                    bootMsg.classList.add('hidden');
-                }
-                console.info("Emergency admin ensured:", result);
+                bootMsg.classList.add('hidden');
             } catch (e) {
-                console.warn("ensureEmergencyAdmin falló:", e);
                 firebaseOk = false;
-                // Mostrar el error para que el usuario pueda corregirlo sin abrir consola
-                bootMsg.innerText = (e && e.message) ? e.message : "No se pudo crear/verificar el admin de emergencia.";
+                bootMsg.innerText = (e && e.message) ? e.message : "No se pudo inicializar Firebase. Revisa configuración/rules/dominio autorizado.";
                 bootMsg.classList.remove('hidden');
             } finally {
                 refreshStatus();
@@ -193,16 +233,30 @@ let deviceId = getDeviceId();
             
             toggleLoading(true);
 
-            const email = usernameInput.includes('@') ? usernameInput : usernameInput + DOMAIN_SUFFIX;
+            // Si el usuario escribe solo "admin", probamos con DOMAIN_SUFFIX, y si no existe, fallback a @mediflow.com
+            const emailPrimary = usernameInput.includes('@') ? usernameInput : (usernameInput + DOMAIN_SUFFIX);
+            const emailFallback = (!usernameInput.includes('@')) ? (usernameInput + "@mediflow.com") : null;
 
             try { 
-                const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+                let userCredential;
+                try {
+                    userCredential = await signInWithEmailAndPassword(auth, emailPrimary, pass);
+                } catch (err) {
+                    // Si no existe con el suffix principal, intentar con el fallback
+                    if (emailFallback && (err?.code === "auth/user-not-found" || err?.code === "auth/invalid-credential")) {
+                        userCredential = await signInWithEmailAndPassword(auth, emailFallback, pass);
+                    } else {
+                        throw err;
+                    }
+                }
                 pendingUser = userCredential.user;
                 await checkDeviceAuthorization(pendingUser);
             } catch (error) { 
                 const code = error?.code || "";
                 if (code === "auth/operation-not-allowed") {
                     resetUI("En Firebase Auth debes habilitar Email/Password.");
+                } else if (code === "auth/unauthorized-domain") {
+                    resetUI("Dominio no autorizado en Firebase Auth. Agrega tu dominio en Authentication → Settings → Authorized domains.");
                 } else if (code === "auth/network-request-failed") {
                     resetUI("No hay conexión con Firebase. Revisa internet / dominio autorizado.");
                 } else if (code === "auth/user-not-found") {
@@ -238,16 +292,16 @@ let deviceId = getDeviceId();
                 if (pendingUserData.role === 'admin' || !requireIpApproval || authorizedDevices.includes(deviceId)) {
                     // Horario/Días: Admin siempre entra, otros deben respetar horario
                     if (pendingUserData.role !== 'admin' && !isWithinSchedule(pendingUserData)) {
-                        // Mostrar bloqueo (sin cerrar sesión automática); botón vuelve al login.
+                        // Fuera de horario: cerrar sesión y mostrar bloqueo con botón "Regresar al login".
+                        try { await signOut(auth); } catch (e) {}
                         showBlockScreen({
                             title: "Horario no autorizado",
-                            message: "Aún no es tu hora autorizada para ingresar. Vuelve dentro del horario asignado por el administrador.",
+                            message: "Aún no es tu hora autorizada para acceder. Vuelve dentro del horario asignado por el administrador.",
                             reason: "OUT_OF_SCHEDULE",
                             redirectTo: "index.html",
-                            signOutOnClick: true,
+                            signOutOnClick: false,
                             allowClose: false
                         });
-                        // Detener el flujo de login aquí.
                         toggleLoading(false);
                         return;
                     }
@@ -368,6 +422,19 @@ let deviceId = getDeviceId();
                             'logistica': 'logistica.html',
                             'repartidor': 'delivery.html'
                         };
+                        // Enforce schedule even on refresh (non-admins)
+                        if (data.role !== 'admin' && !isWithinSchedule(data)) {
+                            pendingUser = user; // prevent auto-navigation loop
+                            showBlockScreen({
+                                title: "Horario no autorizado",
+                                message: "Aún no es tu hora autorizada para ingresar. Vuelve dentro del horario asignado por el administrador.",
+                                reason: "OUT_OF_SCHEDULE",
+                                redirectTo: "index.html",
+                                signOutOnClick: true,
+                                allowClose: false
+                            });
+                            return;
+                        }
                         if(map[data.role]) safeNavigate(map[data.role]);
                     }
                 } catch (e) { console.error(e); }

@@ -31,6 +31,9 @@
     </div>
     <script type="module">
         import { attachSecurityEnforcement } from "./js/core/pageSecurity.js";
+        import { requireAuthAndPolicy } from "./js/core/guards.js";
+        await requireAuthAndPolicy({ allowedRoles: ["farmacia"], allowedJobTitles: ["Supervisor de Farmacia"] });
+
         attachSecurityEnforcement();
 
 

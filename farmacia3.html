@@ -58,6 +58,9 @@
     
     <script type="module">
         import { attachSecurityEnforcement } from "./js/core/pageSecurity.js";
+        import { requireAuthAndPolicy } from "./js/core/guards.js";
+        await requireAuthAndPolicy({ allowedRoles: ["farmacia"], allowedJobTitles: ["Revisión y Asignación"] });
+
         attachSecurityEnforcement();
 
 
@@ -79,7 +82,7 @@
             }
         });
 
-        // ... (Aquí va TODA la lógica de Calendario, Cartera, Crear Línea e Impresión que estaba en el farmacia.html original)
+        // TODO: Reintegrar la lógica de Calendario, Cartera, Crear Línea e Impresión (pendiente).
         // Se copia y pega las funciones: loadCalendar, openDayDetail, prepareShipment, saveShipmentLine, etc.
         // Asegurando que switchSubView cambie la visibilidad de los divs locales.
     </script>

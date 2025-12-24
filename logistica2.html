@@ -79,6 +79,9 @@
 
     <script type="module">
         import { attachSecurityEnforcement } from "./js/core/pageSecurity.js";
+        import { requireAuthAndPolicy } from "./js/core/guards.js";
+        await requireAuthAndPolicy({ allowedRoles: ["logistica"], allowedJobTitles: ["Supervisor Logística"] });
+
         attachSecurityEnforcement();
 
 
@@ -159,7 +162,7 @@ let deviceId = getDeviceId();
         async function setOfflineSafe() {
             try {
                 if (auth.currentUser) {
-                    await updateDoc(doc(db,'artifacts', appId, 'users', auth.currentUser.uid, 'profile', 'data'), { status: 'offline' });
+                    await updateDoc(doc(db,'artifacts', appId, 'users', auth.currentUser.uid, 'profile', 'data'), { status: 'offline', activeSessionId: '' });
                 }
             } catch (e) {
                 // No bloqueamos logout por esto
