@@ -80,14 +80,18 @@
     </div>
 
     <script type="module">
-        import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId } from "./js/core/firebase.js";
+        import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId, authReady } from "./js/core/firebase.js";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { doc, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { ensureEmergencyAdmin } from "./js/core/emergencyAdmin.js";
+import { isWithinSchedule } from "./js/core/utils.js";
+import { showBlockScreen } from "./js/core/blockScreen.js";
 
 // Init del admin de emergencia se ejecuta después de inicializar el indicador de conexión.
 // 1. GENERAR HUELLA DE DISPOSITIVO ÚNICA
 let deviceId = getDeviceId();
+        // Asegura persistencia por pestaña
+        try { await authReady; } catch (e) {}
         let pendingUser = null;
         let pendingUserData = null;
 
@@ -232,6 +236,21 @@ let deviceId = getDeviceId();
                 const requireIpApproval = pendingUserData.requireIpApproval === true;
 
                 if (pendingUserData.role === 'admin' || !requireIpApproval || authorizedDevices.includes(deviceId)) {
+                    // Horario/Días: Admin siempre entra, otros deben respetar horario
+                    if (pendingUserData.role !== 'admin' && !isWithinSchedule(pendingUserData)) {
+                        // Mostrar bloqueo (sin cerrar sesión automática); botón vuelve al login.
+                        showBlockScreen({
+                            title: "Horario no autorizado",
+                            message: "Aún no es tu hora autorizada para ingresar. Vuelve dentro del horario asignado por el administrador.",
+                            reason: "OUT_OF_SCHEDULE",
+                            redirectTo: "index.html",
+                            signOutOnClick: true,
+                            allowClose: false
+                        });
+                        // Detener el flujo de login aquí.
+                        toggleLoading(false);
+                        return;
+                    }
                     finalizeLogin(user, pendingUserData.role);
                 } else {
                     document.getElementById('login-card').classList.add('hidden');
