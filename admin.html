@@ -433,6 +433,10 @@
 
     <!-- SCRIPTS -->
     <script type="module">
+        import { attachSecurityEnforcement } from "./js/core/pageSecurity.js";
+        attachSecurityEnforcement();
+
+
         import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId } from "./js/core/firebase.js";
 import { signOut, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { collection, addDoc, setDoc, doc, getDoc, onSnapshot, updateDoc, deleteDoc, query, where, getDocs, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";

@@ -56,6 +56,10 @@
     </div>
 
     <script type="module">
+        import { attachSecurityEnforcement } from "./js/core/pageSecurity.js";
+        attachSecurityEnforcement();
+
+
         import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId } from "./js/core/firebase.js";
         import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
