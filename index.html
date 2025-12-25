@@ -122,7 +122,7 @@
 
     <script type="module">
         import { auth, db, APP_ID as appId, DOMAIN_SUFFIX, getDeviceId, authReady } from "./js/core/firebase.js";
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, fetchSignInMethodsForEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { doc, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";import { isWithinSchedule } from "./js/core/utils.js";
 import { showBlockScreen } from "./js/core/blockScreen.js";
 
@@ -191,7 +191,10 @@ let deviceId = getDeviceId();
                     authReady,
                     new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout inicializando Firebase. Revisa imports, reglas y dominio autorizado.")), 6000))
                 ]);
-                firebaseOk = true;
+                
+                // Auth ping: valida dominio autorizado y conectividad básica (no requiere login)
+                await fetchSignInMethodsForEmail(auth, ("ping" + DOMAIN_SUFFIX));
+firebaseOk = true;
                 bootMsg.classList.add('hidden');
             } catch (e) {
                 firebaseOk = false;
